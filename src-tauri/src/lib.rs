@@ -268,6 +268,14 @@ mod tests {
 
     #[test]
     fn normalises_dot_segments_without_touching_the_disk() {
+        let root = std::env::temp_dir();
+        let p = normalise(&root.join("a/b/../c/./d.md"));
+        assert_eq!(p, root.join("a/c/d.md"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn normalises_windows_drive_paths() {
         let p = normalise(Path::new(r"C:\a\b\..\c\.\d.md"));
         assert_eq!(p, PathBuf::from(r"C:\a\c\d.md"));
     }
