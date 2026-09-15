@@ -296,10 +296,73 @@ panneau de paramètres.
 .\dev.ps1 version 0.2.0    # monte la version (semver validé)
 ```
 
-`Assert-SingleVersionSource` **échoue** si un champ `version` réapparaît dans
-`tauri.conf.json` ou `package.json`, et `.\dev.ps1 build` l'appelle avant de
-construire : un binaire dont la version a dérivé ne peut pas être livré. Les
-deux cas de dérive sont testés.
+Le script multiplateforme `scripts/version.mjs` vérifie l'absence de version
+dans `tauri.conf.json` et `package.json`, ainsi que la cohérence de `Cargo.lock`.
+`dev.ps1` et les workflows GitHub Actions utilisent ce même contrôle.
+
+```sh
+npm run version:check
+npm run version:set -- 0.2.0-beta.1
+npm run version:set -- 0.2.0
+```
+
+La commande met à jour `Cargo.toml` et l'entrée du projet dans `Cargo.lock`,
+sans modifier les versions des dépendances. Versions acceptées : `X.Y.Z` et
+`X.Y.Z-beta.N`, avec N positif, sans zéros initiaux ni métadonnées `+build`.
+Les limites des installateurs Windows s'appliquent aussi : major/minor <= 255,
+patch <= 65535, numéro de bêta <= 65534.
+
+### Releases et bêtas sur GitHub
+
+- `CI` vérifie les versions, le frontend et les tests Rust sur Windows,
+  macOS et Linux à chaque push sur `main` et à chaque pull request.
+- `Release` est déclenché par un tag `vX.Y.Z` ou `vX.Y.Z-beta.N`.
+  Le tag doit correspondre exactement à la version de `Cargo.toml`.
+- Les quatre builds doivent réussir avant la publication. Un brouillon reçoit
+  tous les installateurs et `SHA256SUMS.txt`, puis devient une release publique.
+  Une bêta porte le statut **Pre-release** et ne remplace pas la dernière stable.
+- Un lancement manuel depuis **Actions → Release → Run workflow** construit
+  les mêmes installateurs, disponibles comme artefacts pendant 14 jours,
+  sans créer de tag ni publier de release.
+
+| Cible | Stable | Bêta |
+| --- | --- | --- |
+| Windows x64 | NSIS `.exe`, `.msi` | NSIS `.exe` |
+| macOS Apple Silicon | `.dmg` | `.dmg` |
+| macOS Intel | `.dmg` | `.dmg` |
+| Linux x64 | `.deb`, `.rpm`, `.AppImage` | mêmes formats |
+
+Les MSI sont réservés aux versions stables car leur version produit est
+numérique. Les bêtas et stables partagent l'identifiant de l'application et
+les préférences : ce ne sont pas deux installations indépendantes.
+Windows ARM et Linux ARM ne sont pas encore inclus dans la matrice.
+
+Exemple de publication d'une bêta (depuis `main`, après validation de CI) :
+
+```sh
+npm run version:set -- 0.2.0-beta.1
+git add src-tauri/Cargo.toml src-tauri/Cargo.lock
+git commit -m "chore: release 0.2.0-beta.1"
+git push origin main
+git tag -a v0.2.0-beta.1 -m "Markdwn 0.2.0-beta.1"
+git push origin v0.2.0-beta.1
+```
+
+Pour la stable, utiliser `0.2.0` et `v0.2.0`. Incrémenter PATCH pour les
+corrections, MINOR pour les fonctionnalités ; tant que le projet est en `0.x`,
+les changements incompatibles peuvent accompagner une nouvelle MINOR.
+Ne pas déplacer un tag publié : corriger puis publier une nouvelle version.
+Si seul un build échoue, relancer les jobs en échec depuis GitHub Actions.
+Si la publication échoue après création du brouillon, compléter ce brouillon
+avant de le publier ; le workflow ne remplace pas une release existante.
+
+Les builds Windows ne sont pas signés par certificat. macOS utilise une
+signature ad hoc, sans notarisation Apple : Gatekeeper peut bloquer l'ouverture.
+Les certificats et la mise à jour automatique de l'application restent à
+configurer séparément. Aucun secret personnel n'est requis pour ces workflows ;
+seul le job de publication dispose de `contents: write`.
+
+Référence : [pipeline GitHub de Tauri](https://v2.tauri.app/distribute/pipelines/github/).
 
 C'est le prérequis du plugin `updater`, qui compare la version installée à celle
 annoncée par le serveur de mise à jour : deux sources divergentes y produiraient
