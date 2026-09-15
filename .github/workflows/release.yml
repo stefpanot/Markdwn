@@ -126,9 +126,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -d '' files < <(find installers -type f -print0)
+          mkdir assets
+          while IFS= read -r -d '' file; do
+            name=$(basename "$file")
+            test ! -e "assets/$name"
+            cp "$file" "assets/$name"
+          done < <(find installers -type f -print0)
+          mapfile -d '' files < <(find assets -type f -print0)
           test "${#files[@]}" -gt 0
-          (cd installers && find . -type f -print0 | sort -z | xargs -0 sha256sum) > SHA256SUMS.txt
+          (cd assets && sha256sum *) > SHA256SUMS.txt
           flags=()
           if [ "$PRERELEASE" = true ]; then flags+=(--prerelease --latest=false); fi
           gh release create "$TAG" "${files[@]}" SHA256SUMS.txt \
