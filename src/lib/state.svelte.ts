@@ -19,7 +19,7 @@ export interface OpenDoc {
   scroll: Record<Mode, number>;
 }
 
-const WELCOME = `# MarkdownEdit
+const WELCOME = `# Markdwn
 
 Éditeur et lecteur Markdown natif. Trois postures, un raccourci chacune.
 

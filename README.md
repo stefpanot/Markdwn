@@ -1,4 +1,4 @@
-# MarkdownEdit
+# Markdwn
 
 Éditeur **et lecteur** Markdown natif pour Windows (puis macOS et Linux).
 Tauri 2 · Svelte 5 · CodeMirror 6 · parsing en Rust.
@@ -74,12 +74,17 @@ agrandir. Ça couvre l'essentiel de l'usage réel du snap.
 
 | Artefact | Taille | Usage |
 | --- | --- | --- |
-| `MarkdownEdit.exe` | 5,5 Mo | exécutable autonome, aucune installation |
-| `bundle/msi/MarkdownEdit_0.1.0_x64_en-US.msi` | 3,1 Mo | installeur MSI (déploiement d'entreprise, GPO) |
-| `bundle/nsis/MarkdownEdit_0.1.0_x64-setup.exe` | 2,5 Mo | installeur classique |
+| `Markdwn.exe` | 5,5 Mo | exécutable autonome, aucune installation |
+| `bundle/msi/Markdwn_0.1.0_x64_en-US.msi` | 3,1 Mo | installeur MSI (déploiement d'entreprise, GPO) |
+| `bundle/nsis/Markdwn_0.1.0_x64-setup.exe` | 2,5 Mo | installeur classique |
 
 L'exécutable de `target/debug/` ne fonctionne **pas** en autonome : il va chercher
 le serveur Vite sur `localhost:1420`. Seul le build release embarque le front.
+
+Après un renommage de l'application, reconstruire les livrables avec
+`.\dev.ps1 build` avant de publier une release GitHub : les anciens fichiers
+de `dist/` ne sont pas mis à jour automatiquement. Renommer simplement un
+installeur ne modifie pas les informations du produit qu'il contient.
 
 > [!NOTE]
 > Les binaires ne sont pas signés. Sur une autre machine, SmartScreen affichera
@@ -221,9 +226,14 @@ Ces marqueurs donnent presque gratuitement :
 
 ## Configuration
 
-Persistée dans `%APPDATA%\com.spanot.markdownedit\config.json`, **hors du
+Persistée dans `%APPDATA%\com.spanot.markdwn\config.json`, **hors du
 dossier d'installation** : une mise à jour ne l'écrase pas. Le panneau
 **Paramètres** (`Ctrl+,`, ou le menu du logo) sait révéler le fichier.
+
+Le renommage en Markdwn change aussi l'identifiant de l'application et donc
+son dossier de configuration. Les préférences d'une ancienne installation
+ne sont pas migrées automatiquement. Pour les conserver, fermer l'application
+et copier son ancien `config.json` dans le dossier ci-dessus avant de la relancer.
 
 Réglages mémorisés : thème, mode courant, taille et largeur de lecture,
 visibilité de la barre de dossiers, scroll synchronisé, dernier dossier ouvert

@@ -50,8 +50,8 @@ function Get-Blockers {
         if (Get-Process $n -ErrorAction SilentlyContinue) { $blockers += "$n (build en cours)" }
     }
 
-    if ($All -and (Get-Process 'markdownedit' -ErrorAction SilentlyContinue)) {
-        $blockers += 'markdownedit (son binaire est dans target\debug)'
+    if ($All -and (Get-Process 'markdwn' -ErrorAction SilentlyContinue)) {
+        $blockers += 'markdwn (son binaire est dans target\debug)'
     }
 
     $here = $PSScriptRoot
@@ -107,7 +107,7 @@ if ($DryRun) {
 # --- préserver les livrables avant de jeter l'arbre release ---
 if ($keepBundle) {
     $bundle = Join-Path $target 'release\bundle'
-    $exe = Join-Path $target 'release\MarkdownEdit.exe'
+    $exe = Join-Path $target 'release\Markdwn.exe'
     if ((Test-Path $bundle) -or (Test-Path $exe)) {
         $dist = Join-Path $PSScriptRoot 'dist'
         New-Item -ItemType Directory -Force -Path $dist | Out-Null
@@ -124,7 +124,7 @@ if ($keepBundle) {
 # --- notre crate seule : les dépendances compilées restent ---
 $cargo = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
 if ((Test-Path $cargo) -and -not $All) {
-    foreach ($args in @(@('clean', '-p', 'markdownedit'), @('clean', '-p', 'markdownedit', '--release'))) {
+    foreach ($args in @(@('clean', '-p', 'markdwn'), @('clean', '-p', 'markdwn', '--release'))) {
         & $cargo @args --manifest-path 'src-tauri\Cargo.toml' 2>&1 | Out-Null
     }
 }

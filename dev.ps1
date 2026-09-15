@@ -1,5 +1,5 @@
 <#
-    Lance MarkdownEdit en développement, le construit, ou gère sa version.
+    Lance Markdwn en développement, le construit, ou gère sa version.
 
     Pourquoi ce script : Visual Studio 2026 n'écrit plus la clé de registre
     HKLM\SOFTWARE\Microsoft\VisualStudio\SxS\VS7, sur laquelle repose une partie

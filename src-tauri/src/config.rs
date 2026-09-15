@@ -3,7 +3,7 @@
 //! Trois exigences, dans cet ordre :
 //!
 //! 1. **Hors du dossier d'installation** — `app_config_dir()`, donc
-//!    `%APPDATA%\com.spanot.markdownedit\`. Une mise à jour ne l'écrase pas.
+//!    `%APPDATA%\com.spanot.markdwn\`. Une mise à jour ne l'écrase pas.
 //! 2. **Schéma versionné** — `schema_version` et des migrations explicites.
 //!    Sans ça, la moindre évolution de forme casse les configs existantes.
 //! 3. **Résilience** — les clés inconnues sont PRÉSERVÉES (pour ne pas

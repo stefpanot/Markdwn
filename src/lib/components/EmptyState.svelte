@@ -32,7 +32,7 @@
       <Icon name="wordmark" size={24} width={1.8} />
     </div>
 
-    <h1>MarkdownEdit</h1>
+    <h1>Markdwn</h1>
     <p class="tagline">Éditeur et lecteur Markdown natif.</p>
 
     <div class="actions">
@@ -56,7 +56,7 @@
 
       <button class="action" onclick={onDiscover}>
         <Icon name="view-preview" size={16} width={1.4} />
-        <span class="label">Découvrir MarkdownEdit</span>
+        <span class="label">Découvrir Markdwn</span>
         <span class="hint">ouvre un document de démonstration</span>
       </button>
     </div>
