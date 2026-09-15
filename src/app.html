@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%sveltekit.assets%/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MarkdownEdit</title>
+    <!-- Peint avant l'hydratation : évite le flash blanc au démarrage, ce qui
+         serait le premier défaut visible d'une app qui se veut rapide. -->
+    <style>
+      html {
+        background: #191a1d;
+      }
+      html[data-theme="light"] {
+        background: #e8e9ee;
+      }
+    </style>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

@@ -1,0 +1,198 @@
+/* Système de design MarkdownEdit — valeurs issues de la maquette.
+   Deux accents seulement : indigo pour la structure, terre cuite pour le code
+   et l'état « non enregistré ». Même clarté, même chroma, teintes opposées. */
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --window-bg: radial-gradient(130% 90% at 12% -10%, #2a2b33 0%, #1e1f24 48%, #191a1d 100%);
+  --surface-editor: #1c1d21;
+  --surface-preview: #202126;
+  --surface-raised: #23242b;
+  --surface-sunken: #191a1e;
+
+  --fg-1: #e7e8ec;
+  --fg-2: #9fa2ab;
+  --fg-3: #868a94;
+  --fg-4: #7e828c;
+  --fg-bright: #f4f5f8;
+
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.09);
+  --hover: rgba(255, 255, 255, 0.06);
+  --active: rgba(255, 255, 255, 0.1);
+  --chip: rgba(255, 255, 255, 0.05);
+  --top-highlight: rgba(255, 255, 255, 0.06);
+
+  --accent: #8c94f6;
+  --accent-fg: #a8aef9;
+  --accent-on: #eceefe;
+  --accent-soft: rgba(140, 148, 246, 0.15);
+  --accent-line: rgba(140, 148, 246, 0.18);
+  --accent-2: #e08e6a;
+  --accent-2-fg: #e6a181;
+  --accent-2-soft: rgba(224, 142, 106, 0.13);
+
+  /* Coloration de la source Markdown */
+  --syn-punct: #787c92;
+  --syn-marker: #7c82bc;
+  --syn-text: #c8cad1;
+  --syn-strong: #eceef4;
+  --line-active: rgba(140, 148, 246, 0.07);
+
+  --scrollbar: rgba(255, 255, 255, 0.13);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --window-bg: radial-gradient(130% 90% at 12% -10%, #fbfbfd 0%, #f2f2f6 48%, #e8e9ee 100%);
+  --surface-editor: #fdfdfe;
+  --surface-preview: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f8f9fb;
+
+  --fg-1: #1b1c20;
+  --fg-2: #5f636c;
+  --fg-3: #767a83;
+  --fg-4: #7d8189;
+  --fg-bright: #0e0f13;
+
+  --border: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.09);
+  --hover: rgba(0, 0, 0, 0.045);
+  --active: rgba(0, 0, 0, 0.06);
+  --chip: rgba(0, 0, 0, 0.05);
+  --top-highlight: rgba(255, 255, 255, 0.7);
+
+  --accent: #5a63d6;
+  --accent-fg: #4a52c4;
+  --accent-on: #2a3099;
+  --accent-soft: rgba(90, 99, 214, 0.1);
+  --accent-line: rgba(90, 99, 214, 0.14);
+  --accent-2: #b06239;
+  --accent-2-fg: #9c5430;
+  --accent-2-soft: rgba(176, 98, 57, 0.1);
+
+  --syn-punct: #878c98;
+  --syn-marker: #7a80cd;
+  --syn-text: #35373e;
+  --syn-strong: #17181e;
+  --line-active: rgba(90, 99, 214, 0.1);
+
+  --scrollbar: rgba(0, 0, 0, 0.16);
+}
+
+:root {
+  /* Métriques — la maquette en dépend, ne pas ajuster à la volée. */
+  --h-titlebar: 40px;
+  --h-bar: 36px;
+  --h-readingbar: 40px;
+  --h-status: 28px;
+  --w-sidebar: 250px;
+  --w-toc: 268px;
+  --h-control: 28px;
+  --r-sm: 5px;
+  --r-md: 6px;
+  --r-lg: 7px;
+  --r-xl: 9px;
+
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+  --font-read: "Literata", Georgia, "Times New Roman", serif;
+
+  /* Éditeur : la hauteur de ligne est un multiple exact, le calage des
+     tableaux ASCII en dépend. */
+  --editor-size: 14.5px;
+  --editor-leading: 25.8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--window-bg);
+  color: var(--fg-1);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  box-shadow: inset 0 1px 0 var(--top-highlight);
+  /* Une app de bureau : pas de sélection accidentelle du chrome. */
+  user-select: none;
+  cursor: default;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+/* Cible tactile et de souris uniforme pour tous les boutons d'icône. */
+.icon-btn {
+  width: var(--h-control);
+  height: var(--h-control);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-md);
+  color: var(--fg-2);
+  flex-shrink: 0;
+}
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--fg-1);
+}
+.icon-btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-fg);
+}
+.icon-btn:disabled {
+  color: var(--fg-4);
+  opacity: 0.55;
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-strong);
+  margin: 0 7px;
+  flex-shrink: 0;
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--fg-3);
+  padding: 3px 6px;
+  border-radius: var(--r-sm);
+  background: var(--chip);
+  box-shadow: inset 0 0 0 1px var(--border);
+}

@@ -1,0 +1,47 @@
+[package]
+name = "markdownedit"
+# SOURCE UNIQUE de la version de l'application.
+# `tauri.conf.json` n'a pas de champ `version` : Tauri retombe sur celle-ci.
+# `package.json` n'en a pas non plus (paquet privé). `dev.ps1 version` lit,
+# écrit et vérifie qu'aucun duplicata n'est réapparu.
+version = "0.1.0"
+description = "Éditeur et lecteur Markdown natif"
+authors = ["Stéphane Panot"]
+edition = "2021"
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "markdownedit_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-window-state = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pulldown-cmark = "0.13"
+# Les hrefs Markdown sont percent-encodés (les espaces en %20) ; déjà dans
+# l'arbre de dépendances de Tauri, donc gratuit au build.
+percent-encoding = "2"
+
+# Tauri tire ~380 crates, et leurs infos de debug pèsent l'essentiel des
+# quelques gigaoctets de target/. On les coupe pour les DÉPENDANCES seulement :
+# notre propre crate reste entièrement débogable, pas à pas et backtraces
+# comprises. Retirer ce bloc si un jour il faut entrer dans le code de Tauri.
+[profile.dev.package."*"]
+debug = false
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

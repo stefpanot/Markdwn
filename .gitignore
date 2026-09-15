@@ -1,0 +1,35 @@
+.DS_Store
+node_modules
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Configs personnelles d'IDE et d'AI
+.claude/
+.vscode/
+
+# Livrables recopies par clean.ps1 -Release
+/dist
+
+# Clés de signature de l'updater Tauri. Écrit AVANT que la clé existe : une clé
+# privée poussée sur GitHub est compromise pour de bon, et la révoquer oblige
+# tous les utilisateurs à réinstaller à la main.
+*.key
+tauri-private.key*
+/src-tauri/*.key
+
+# Sortie assemblée du canvas de maquettes. Les sources sont les design/*.dc.html
+# et design/canvas.json ; ce fichier est un artefact de ~2 Mo régénérable.
+/design/markdownedit-ui.html
+
+# Journaux laisses par un lancement en arriere-plan
+dev-*.log
+
+# Build Rust
+src-tauri/target/
+src-tauri/gen/schemas

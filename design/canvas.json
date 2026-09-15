@@ -1,0 +1,50 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Écrans" },
+    { "id": "page-2", "name": "Directions" }
+  ],
+  "artboards": [
+    { "file": "Reading.dc.html", "title": "Mode Lecture — sombre", "x": 0, "y": 0, "w": 1440, "h": 900, "page": "page-1" },
+    { "file": "Main.dc.html", "title": "Mode Split — écrire et vérifier", "x": 1560, "y": 0, "w": 1440, "h": 900, "page": "page-1" },
+    { "file": "Zen.dc.html", "title": "Mode Zen — écrire", "x": 3120, "y": 0, "w": 1440, "h": 900, "page": "page-1" },
+    { "file": "Light.dc.html", "title": "Mode Split — clair", "x": 0, "y": 1080, "w": 1440, "h": 900, "page": "page-1" },
+    { "file": "Palette.dc.html", "title": "Command palette", "x": 1560, "y": 1080, "w": 1440, "h": 900, "page": "page-1" },
+    { "file": "DirectionEditorial.dc.html", "title": "Direction A — Éditorial", "x": 0, "y": 0, "w": 1000, "h": 640, "page": "page-2" },
+    { "file": "DirectionDense.dc.html", "title": "Direction B — Atelier dense", "x": 1120, "y": 0, "w": 1000, "h": 640, "page": "page-2" }
+  ],
+  "annotations": [
+    {
+      "id": "trois-postures",
+      "x": 0,
+      "y": -320,
+      "w": 700,
+      "text": "Trois postures, pas une densité\n\nLire, écrire+vérifier, écrire. La rangée du haut, de gauche à droite. Aucune n'est secondaire, et chacune veut une largeur différente — donc la densité se règle PAR MODE, pas globalement.\n\nLecture : le document prend toute la fenêtre, colonne de 712px, sommaire à gauche, historique avant/arrière entre documents.\nSplit : sidebar fine + deux panneaux, pour écrire en vérifiant le rendu.\nZen : colonne seule, tout le reste estompé.\n\nLe sélecteur de mode (en haut à droite) devient donc le cœur de l'interface, pas un bouton de toolbar.",
+      "page": "page-1"
+    },
+    {
+      "id": "lecture-typo",
+      "x": 780,
+      "y": -320,
+      "w": 620,
+      "text": "Une proposition à valider : le serif\n\nEn mode Lecture le corps du texte passe en Literata (dessinée pour la lecture longue à l'écran), 17px/1,78, mesure 68 caractères. L'UI reste en Inter.\n\nC'est un écart à ta spec typo, assumé : sur un document de 6 minutes, un serif de lecture fatigue moins qu'un sans-serif d'interface. Si ça ne te plaît pas, la face du document devient un réglage et je repasse tout en Inter.\n\nLes deux boutons « A » et le compteur de caractères à droite sont là pour ça : la typo de lecture se règle sans ouvrir de préférences.",
+      "page": "page-1"
+    },
+    {
+      "id": "systeme",
+      "x": 3120,
+      "y": 1080,
+      "w": 660,
+      "text": "Le système\n\nAccents : indigo #8C94F6 et terre cuite #E08E6A (même clarté, même chroma, teintes opposées) — l'un porte la structure, l'autre le code et l'état « non enregistré ».\n\nFond : simulation Mica Windows 11 — dégradé radial très désaturé, surfaces de contenu opaques par-dessus.\n\nTypo : Inter pour l'UI. JetBrains Mono 14,5/25,8 dans l'éditeur, 16/32 en Zen. Literata 17/1,78 pour le document en Lecture.\nRayons 6–9px, contrôles 28px, titlebar 40px.\n\nLes lignes de l'éditeur sont en white-space: pre — l'alignement des tableaux ASCII en dépend.",
+      "page": "page-1"
+    },
+    {
+      "id": "arbitrage",
+      "x": 0,
+      "y": -250,
+      "w": 720,
+      "text": "Ces deux directions sont dépassées\n\nElles posaient la question comme un curseur unique entre « écrire » et « outiller ». Mais la lecture compte autant que l'écriture, et elle ne veut ni l'une ni l'autre : elle veut toute la largeur.\n\nD'où la réponse en trois postures sur la page « Écrans ». Je les garde ici parce que chacune apporte encore une idée récupérable : de A, l'ouverture de fichiers au clavier sans sidebar permanente ; de B, le dock de droite (liens cassés, images orphelines) comme panneau ponctuel plutôt que permanent.",
+      "page": "page-2"
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

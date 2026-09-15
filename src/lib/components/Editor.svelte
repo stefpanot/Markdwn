@@ -1,0 +1,141 @@
+<script lang="ts">
+  import { EditorState } from "@codemirror/state";
+  import { EditorView, keymap, highlightActiveLine, drawSelection } from "@codemirror/view";
+  import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+  import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+  import { languages } from "@codemirror/language-data";
+  import { editorTheme, highlighting } from "$lib/editor-theme";
+  import { app } from "$lib/state.svelte";
+
+  interface Props {
+    /** Remonte la première ligne visible, pour la synchro de scroll. */
+    onScrollLine?: (line: number) => void;
+  }
+  let { onScrollLine }: Props = $props();
+
+  let host: HTMLDivElement;
+  let view: EditorView | undefined;
+  /** Identité du document que l'EditorView porte actuellement. Suivre l'INDEX
+      serait faux : les index sont réutilisés dès qu'un onglet se ferme, donc
+      « tout fermer » laisserait le texte précédent à l'écran, et fermer un
+      onglet à gauche de l'actif rechargerait le même document pour rien. */
+  let loadedId = -1;
+
+  function extensions() {
+    return [
+      history(),
+      drawSelection(),
+      highlightActiveLine(),
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      markdown({ base: markdownLanguage, codeLanguages: languages }),
+      editorTheme,
+      highlighting,
+      EditorView.lineWrapping,
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged && app.active) {
+          app.active.content = u.state.doc.toString();
+        }
+        if (u.docChanged || u.selectionSet) {
+          const head = u.state.selection.main.head;
+          const line = u.state.doc.lineAt(head);
+          app.cursorLine = line.number;
+          app.cursorCol = head - line.from + 1;
+        }
+      }),
+    ];
+  }
+
+  // Créé vide, sans lire l'état applicatif : cet effet ne doit dépendre de
+  // rien, sinon il détruirait et recréerait l'éditeur. L'effet de chargement
+  // ci-dessous y met le document actif dans la foulée.
+  $effect(() => {
+    if (!host) return;
+    view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: "", extensions: extensions() }),
+    });
+    loadedId = -1;
+
+    const scroller = view.scrollDOM;
+    const report = () => {
+      if (!view || !onScrollLine) return;
+      const box = scroller.getBoundingClientRect();
+      const pos = view.posAtCoords({ x: box.left + 40, y: box.top + 2 }, false);
+      onScrollLine(view.state.doc.lineAt(pos).number);
+    };
+    scroller.addEventListener("scroll", report, { passive: true });
+
+    return () => {
+      scroller.removeEventListener("scroll", report);
+      view?.destroy();
+      view = undefined;
+      loadedId = -1;
+    };
+  });
+
+  /** Changer de document remplace le contenu sans recréer l'éditeur.
+      Le garde sort AVANT de lire `content`, pour que la frappe ne fasse pas de
+      cet effet un dépendant du texte. */
+  $effect(() => {
+    const doc = app.active;
+    if (!view || !doc || doc.id === loadedId) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: doc.content },
+      selection: { anchor: 0 },
+    });
+    loadedId = doc.id;
+  });
+
+  export function scrollToLine(line: number) {
+    if (!view) return;
+    const clamped = Math.min(Math.max(line, 1), view.state.doc.lines);
+    const target = view.state.doc.line(clamped);
+    view.dispatch({ effects: EditorView.scrollIntoView(target.from, { y: "start" }) });
+  }
+
+  export function focus() {
+    view?.focus();
+  }
+
+  /** Entoure la sélection — gras, italique, code inline. */
+  export function wrap(before: string, after = before) {
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const text = view.state.sliceDoc(from, to);
+    view.dispatch({
+      changes: { from, to, insert: `${before}${text}${after}` },
+      selection: { anchor: from + before.length, head: from + before.length + text.length },
+    });
+    view.focus();
+  }
+
+  /** Préfixe chaque ligne de la sélection — titres, listes, citations. */
+  export function prefixLines(prefix: string) {
+    if (!view) return;
+    const { state } = view;
+    const { from, to } = state.selection.main;
+    const first = state.doc.lineAt(from).number;
+    const last = state.doc.lineAt(to).number;
+    const changes = [];
+    for (let n = first; n <= last; n++) {
+      changes.push({ from: state.doc.line(n).from, insert: prefix });
+    }
+    view.dispatch({ changes });
+    view.focus();
+  }
+</script>
+
+<div class="editor" bind:this={host}></div>
+
+<style>
+  .editor {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    background: var(--surface-editor);
+    overflow: hidden;
+  }
+  .editor :global(.cm-editor) {
+    height: 100%;
+  }
+</style>

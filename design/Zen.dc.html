@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #17181b; -webkit-font-smoothing: antialiased; }
+    a { color: #8c94f6; text-decoration: none; }
+    a:hover { color: #a8aef9; text-decoration: underline; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; overflow: hidden; position: relative; font-family: Inter, system-ui, sans-serif; background: radial-gradient(120% 100% at 50% -20%, #24252c 0%, #1b1c20 55%, #17181a 100%);">
+
+  <!-- ambient top highlight -->
+  <div style="position: absolute; top: 0; left: 0; right: 0; height: 1px; background: rgba(255,255,255,.055);"></div>
+
+  <!-- ===== minimal chrome, top-right ===== -->
+  <div style="position: absolute; top: 18px; right: 22px; display: flex; align-items: center; gap: 2px;">
+    <div style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: #7e828c;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 9.4A5 5 0 016.6 3.4 5 5 0 108 13a5 5 0 004.6-3.6z"/></svg>
+    </div>
+    <div style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: #7e828c;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="3.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="12.6" r="1.1" fill="currentColor" stroke="none"/></svg>
+    </div>
+    <div style="height: 30px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 7px; background: rgba(255,255,255,.045); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); margin-left: 4px;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#9fa2ab" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 6.4V2.8h3.6M13.4 6.4V2.8H9.8M13.4 9.6v3.6H9.8M2.6 9.6v3.6h3.6"/></svg>
+      <span style="font-size: 11.5px; font-weight: 500; color: #9fa2ab;">Quitter</span>
+      <span style="font-size: 10.5px; color: #8a8e98; font-family: 'JetBrains Mono', monospace;">Esc</span>
+    </div>
+  </div>
+
+  <!-- ===== file name, top-left (very quiet) ===== -->
+  <div style="position: absolute; top: 24px; left: 26px; display: flex; align-items: center; gap: 8px;">
+    <div style="width: 6px; height: 6px; border-radius: 50%; background: #7e828c; opacity: .9;"></div>
+    <span style="font-size: 11.5px; font-weight: 450; color: #7e828c; letter-spacing: .01em;">docs/preview-handler.md</span>
+  </div>
+
+  <!-- ===== WRITING COLUMN ===== -->
+  <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 740px; padding-top: 96px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 16px; line-height: 32px; letter-spacing: -.008em;">
+
+    <!-- faded, above the focus -->
+    <div style="opacity: .38;">
+      <div><span style="color: #7c82bc;">## </span><span style="color: #eceef4; font-weight: 700;">Stack</span></div>
+      <div style="height: 32px;"></div>
+      <div style="color: #c8cad1; white-space: pre;"><span style="color: #787c92;">|</span> Couche  <span style="color: #787c92;">|</span> Choix        <span style="color: #787c92;">|</span></div>
+      <div style="color: #787c92; white-space: pre;">| ------- | ------------ |</div>
+      <div style="color: #c8cad1; white-space: pre;"><span style="color: #787c92;">|</span> Shell   <span style="color: #787c92;">|</span> Tauri 2      <span style="color: #787c92;">|</span></div>
+      <div style="color: #c8cad1; white-space: pre;"><span style="color: #787c92;">|</span> UI      <span style="color: #787c92;">|</span> Svelte 5     <span style="color: #787c92;">|</span></div>
+      <div style="color: #c8cad1; white-space: pre;"><span style="color: #787c92;">|</span> Éditeur <span style="color: #787c92;">|</span> CodeMirror 6 <span style="color: #787c92;">|</span></div>
+    </div>
+
+    <div style="height: 32px;"></div>
+
+    <div style="opacity: .5;">
+      <div><span style="color: #7c82bc;">## </span><span style="color: #eceef4; font-weight: 700;">Preview dans l'explorateur</span></div>
+    </div>
+
+    <div style="height: 32px;"></div>
+
+    <!-- ===== ACTIVE PARAGRAPH (full opacity) ===== -->
+    <div>
+      <div style="color: #d6d8df;">Le volet de visualisation de l'Explorateur passe par un</div>
+      <div><span style="color: #787c92;">`</span><span style="color: #e08e6a;">IPreviewHandler</span><span style="color: #787c92;">`</span><span style="color: #d6d8df;"> — une DLL COM in-process, hébergée</span></div>
+      <div><span style="color: #d6d8df;">dans </span><span style="color: #787c92;">`</span><span style="color: #e08e6a;">prevhost.exe</span><span style="color: #787c92;">`</span><span style="color: #d6d8df;">, enregistrée par extension.</span><span style="display: inline-block; width: 1.8px; height: 20px; background: #a8aef9; vertical-align: -4px; margin-left: 2px;"></span></div>
+    </div>
+
+    <div style="height: 32px;"></div>
+
+    <!-- faded, below the focus -->
+    <div style="opacity: .38;">
+      <div><span style="color: #e08e6a;">- </span><span style="color: #c8cad1;">Implémentable en Rust via </span><span style="color: #787c92;">`</span><span style="color: #e08e6a;">windows-rs</span><span style="color: #787c92;">`</span></div>
+      <div><span style="color: #e08e6a;">- </span><span style="color: #c8cad1;">Enregistrement registre par extension</span></div>
+      <div><span style="color: #e08e6a;">- </span><span style="color: #c8cad1;">Debug pénible : </span><span style="color: #787c92;">`</span><span style="color: #e08e6a;">prevhost</span><span style="color: #787c92;">`</span><span style="color: #c8cad1;"> est un hôte séparé</span></div>
+      <div style="height: 32px;"></div>
+      <div><span style="color: #7c82bc;">&gt; </span><span style="color: #c8cad1;">Alternative à 20 % de l'effort : une fenêtre</span></div>
+      <div><span style="color: #7c82bc;">&gt; </span><span style="color: #c8cad1;">d'aperçu rapide sur raccourci global.</span></div>
+    </div>
+  </div>
+
+  <!-- ===== bottom fade ===== -->
+  <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 130px; background: linear-gradient(to top, #191a1d 15%, rgba(25,26,29,0));"></div>
+
+  <!-- ===== word count pill ===== -->
+  <div style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; height: 32px; padding: 0 15px; border-radius: 9px; background: rgba(255,255,255,.035); box-shadow: inset 0 0 0 1px rgba(255,255,255,.055);">
+    <span style="font-size: 11.5px; font-weight: 500; color: #9fa2ab;">1 318 mots</span>
+    <div style="width: 1px; height: 13px; background: rgba(255,255,255,.1);"></div>
+    <span style="font-size: 11.5px; color: #868a94;">7 min de lecture</span>
+    <div style="width: 1px; height: 13px; background: rgba(255,255,255,.1);"></div>
+    <div style="display: flex; align-items: center; gap: 7px;">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#868a94" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4.2v3.8l2.6 1.6"/><circle cx="8" cy="8" r="5.6"/></svg>
+      <span style="font-size: 11.5px; color: #868a94;">Enregistré il y a 4 s</span>
+    </div>
+  </div>
+
+  <!-- ===== scroll progress ===== -->
+  <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: rgba(255,255,255,.05);">
+    <div style="width: 46%; height: 2px; background: linear-gradient(to right, rgba(140,148,246,.35), #8c94f6);"></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
