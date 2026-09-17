@@ -188,10 +188,18 @@
   }
 
   async function openFile() {
-    const picked = await openDialog({
-      multiple: false,
-      filters: [{ name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd"] }],
-    });
+    let picked: string | string[] | null = null;
+    try {
+      picked = await openDialog({
+        multiple: false,
+        filters: [{ name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd"] }],
+      });
+    } catch {
+      // Serveur Vite nu : la boîte de dialogue est un plugin Tauri, absent
+      // hors de l'app. Sans ce garde, le rejet serait invisible.
+      error = "Ouvrir un fichier n'est disponible que dans l'application de bureau.";
+      return;
+    }
     if (typeof picked === "string") await openPath(picked);
   }
 
@@ -202,7 +210,14 @@
   }
 
   async function openFolder() {
-    const picked = await openDialog({ directory: true, multiple: false });
+    let picked: string | string[] | null = null;
+    try {
+      picked = await openDialog({ directory: true, multiple: false });
+    } catch {
+      // Même garde que openFile : le dialogue est un plugin Tauri.
+      error = "Ouvrir un dossier n'est disponible que dans l'application de bureau.";
+      return;
+    }
     if (typeof picked !== "string") return;
     try {
       await refreshFolder(picked);
@@ -218,10 +233,17 @@
     if (!doc) return;
     let path = doc.path;
     if (!path) {
-      const picked = await saveDialog({
-        defaultPath: doc.name,
-        filters: [{ name: "Markdown", extensions: ["md"] }],
-      });
+      let picked: string | null = null;
+      try {
+        picked = await saveDialog({
+          defaultPath: doc.name,
+          filters: [{ name: "Markdown", extensions: ["md"] }],
+        });
+      } catch {
+        // Même garde que openFile : le dialogue est un plugin Tauri.
+        error = "Enregistrer sous n'est disponible que dans l'application de bureau.";
+        return;
+      }
       if (typeof picked !== "string") return;
       path = picked;
     }
