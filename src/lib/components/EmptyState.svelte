@@ -19,6 +19,7 @@
 
   const shortcuts: [string, string][] = [
     ["Ctrl+1 / 2 / 3", "Lecture · Split · Zen"],
+    ["Ctrl+K", "Palette de commandes"],
     ["Ctrl+B", "Barre de dossiers"],
     ["Alt+↑ / Alt+↓", "Fichier précédent / suivant"],
     ["Ctrl+S", "Enregistrer"],

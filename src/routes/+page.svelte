@@ -17,6 +17,9 @@
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import type { MenuItem } from "$lib/menu";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  import CommandPalette, {
+    type PaletteCommand,
+  } from "$lib/components/CommandPalette.svelte";
   import {
     appVersion,
     listDir,
@@ -173,10 +176,10 @@
   }
 
   /* ---------- fichiers ---------- */
-  async function openPath(path: string) {
+  async function openPath(path: string, opts: { newTab?: boolean } = {}) {
     try {
       const doc = await readDocument(path);
-      app.open(doc);
+      app.open(doc, { forceNew: opts.newTab });
       pushHistory(path);
       error = "";
     } catch (e) {
@@ -374,6 +377,76 @@
       separatorBefore: true,
       run: () => (app.settingsOpen = true),
     },
+    { label: "Palette de commandes…", keys: "Ctrl+K", run: () => (app.paletteOpen = true) },
+  ]);
+
+  /* ---------- palette de commandes (Ctrl+K) : mêmes actions que les menus -- */
+  const paletteCommands = $derived.by((): PaletteCommand[] => [
+    { id: "new", label: "Nouveau document", icon: "plus", keys: "Ctrl+N", run: newDocument },
+    { id: "open-file", label: "Ouvrir un fichier…", icon: "file", keys: "Ctrl+O", run: openFile },
+    { id: "open-folder", label: "Ouvrir un dossier…", icon: "folder", run: openFolder },
+    ...(app.active
+      ? [
+          {
+            id: "save",
+            label: "Enregistrer",
+            icon: "save",
+            keys: "Ctrl+S",
+            run: save,
+          } satisfies PaletteCommand,
+          {
+            id: "close-tab",
+            label: "Fermer l'onglet",
+            icon: "close",
+            keys: "Ctrl+W",
+            run: () => closeTabs("one", app.activeIndex),
+          } satisfies PaletteCommand,
+        ]
+      : []),
+    {
+      id: "mode-read",
+      label: "Basculer en mode Lecture",
+      icon: "view-preview",
+      keys: "Ctrl+1",
+      keywords: "lire read",
+      run: () => (app.mode = "read"),
+    },
+    {
+      id: "mode-split",
+      label: "Basculer en mode Split",
+      icon: "view-split",
+      keys: "Ctrl+2",
+      run: () => (app.mode = "split"),
+    },
+    {
+      id: "mode-zen",
+      label: "Basculer en mode Zen",
+      icon: "zen",
+      keys: "Ctrl+3",
+      keywords: "écrire focus",
+      run: () => (app.mode = "zen"),
+    },
+    {
+      id: "sidebar",
+      label: "Afficher / masquer la barre de dossiers",
+      icon: "sidebar",
+      keys: "Ctrl+B",
+      run: () => (app.sidebarVisible = !app.sidebarVisible),
+    },
+    {
+      id: "theme",
+      label: app.theme === "dark" ? "Passer au thème clair" : "Passer au thème sombre",
+      icon: app.theme === "dark" ? "sun" : "moon",
+      keywords: "theme dark light sombre clair",
+      run: () => (app.theme = app.theme === "dark" ? "light" : "dark"),
+    },
+    {
+      id: "settings",
+      label: "Paramètres…",
+      icon: "settings",
+      keys: "Ctrl+,",
+      run: () => (app.settingsOpen = true),
+    },
   ]);
 
   async function revealConfig() {
@@ -434,6 +507,11 @@
 
   /* ---------- raccourcis ---------- */
   function onKeydown(e: KeyboardEvent) {
+    // La palette capture tout quand elle est ouverte : ses flèches, son Entrée
+    // et son Échap ne doivent pas déclencher les raccourcis de l'app (sinon
+    // Échap dans le Zen quitterait le mode au lieu de fermer la palette).
+    if (app.paletteOpen) return;
+
     if (e.altKey && !e.ctrlKey && !e.metaKey) {
       if (e.key === "ArrowDown") stepFile(1);
       else if (e.key === "ArrowUp") stepFile(-1);
@@ -468,6 +546,9 @@
         break;
       case "o":
         openFile();
+        break;
+      case "k":
+        app.paletteOpen = true;
         break;
       case "n":
         newDocument();
@@ -629,6 +710,14 @@
 
   {#if app.settingsOpen}
     <SettingsPanel onClose={() => (app.settingsOpen = false)} onReveal={revealConfig} />
+  {/if}
+
+  {#if app.paletteOpen}
+    <CommandPalette
+      commands={paletteCommands}
+      onClose={() => (app.paletteOpen = false)}
+      onOpenPath={(path, newTab) => openPath(path, { newTab })}
+    />
   {/if}
 
   {#if error}
