@@ -23,8 +23,10 @@ interface qui s'adapte à chacun plutôt qu'un mode unique à tout faire.
 - **Trois modes dédiés** — Lecture (`Ctrl+1`), Split (`Ctrl+2`), Zen (`Ctrl+3`) — chacun avec sa propre mise en page, pas un simple bouton de barre d'outils.
 - **Rendu Markdown en Rust**, avec sommaire cliquable et scroll synchronisé entre l'éditeur et l'aperçu.
 - **Suivi des liens relatifs** entre documents, y compris ancres et fichiers sans extension.
+- **Images relatives affichées dans l'aperçu** (`![…](images/x.png)` comme `<img src="…">` en HTML brut), résolues depuis le dossier du document.
 - **Éditeur CodeMirror 6** avec coloration syntaxique Markdown et formatage rapide (gras, italique, lien, liste, citation).
 - **Onglets multi-documents**, thèmes clair et sombre, arborescence de dossier masquable.
+- **Palette de commandes** (`Ctrl+K`) : recherche floue dans les fichiers du dossier ouvert et toutes les commandes de l'app ; `>` pour les commandes seules.
 
 ## Raccourcis essentiels
 
@@ -32,6 +34,7 @@ interface qui s'adapte à chacun plutôt qu'un mode unique à tout faire.
 | --- | --- |
 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Lecture / Split / Zen |
 | `Ctrl+O` / `Ctrl+S` / `Ctrl+N` | Ouvrir / Enregistrer / Nouveau |
+| `Ctrl+K` | Palette de commandes |
 | `Ctrl+B` | Afficher / masquer la barre de dossiers |
 | `Ctrl+W` | Fermer l'onglet |
 | `Ctrl+,` | Paramètres |
@@ -57,13 +60,18 @@ macOS et Linux sont sur la feuille de route.
 
 **Tauri 2** (shell natif) · **Svelte 5** (interface) · **CodeMirror 6** (éditeur) · **Rust** (lecture disque et parsing Markdown).
 
+> Pour développer : `.\dev.ps1` (Windows) charge l'environnement MSVC puis lance
+> `tauri dev`. Lancer `npm run dev` seul ouvre l'interface dans un simple
+> navigateur, **sans accès au disque** — mode dégradé réservé au travail sur
+> l'UI, pas un usage supporté : Markdwn est une application de bureau.
+
 ## Statut du projet
 
 En développement actif. Fonctionnel dès aujourd'hui : les trois modes, l'édition
-et l'aperçu, le suivi des liens, les onglets, les thèmes, la configuration
-persistée. À venir : images relatives dans l'aperçu, palette de commandes,
-recherche multi-fichiers, coloration syntaxique des blocs de code, portage
-macOS/Linux.
+et l'aperçu, le suivi des liens, les images relatives dans l'aperçu, les
+onglets, les thèmes, la configuration persistée, la palette de commandes.
+À venir : recherche multi-fichiers, coloration syntaxique des blocs de code,
+portage macOS/Linux.
 
 ## Licence
 
