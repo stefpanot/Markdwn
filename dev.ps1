@@ -45,8 +45,41 @@ function Set-AppVersion([string]$next) {
     if ($LASTEXITCODE -ne 0) { throw 'Changement de version échoué.' }
 }
 
+<#
+    Place le dossier du node épinglé par mise en tête du PATH.
+
+    `mise exec -- npm …` est volontairement évité : le `--` ne traverse pas
+    toujours l'appel natif selon les profils PowerShell (clap se plaint alors
+    d'un <COMMAND> manquant), et `mise` peut être absent du PATH ou intercepté
+    par un alias de profil. On résout donc le binaire explicitement, on demande
+    le chemin de node (`mise which`, arguments positionnels simples), puis on
+    appelle npm directement.
+#>
+function Enable-NodeEnv {
+    $mise = @(
+        "$env:LOCALAPPDATA\Microsoft\WinGet\Links\mise.exe",
+        "$env:USERPROFILE\.local\bin\mise.exe",
+        (Get-Command mise.exe -ErrorAction SilentlyContinue).Source
+    ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
+    $node = $null
+    if ($mise) {
+        $node = (& $mise which node 2>$null | Select-Object -First 1)
+    }
+    if (-not $node -or -not (Test-Path $node)) {
+        # Dernier recours : un node quelconque déjà sur le PATH.
+        $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+    }
+    if (-not $node -or -not (Test-Path $node)) {
+        throw "node introuvable. Lancer 'mise install' dans le projet ou installer Node."
+    }
+    $env:Path = "$(Split-Path $node);$env:Path"
+    return $node
+}
+
 # --- tâche version : pas besoin de l'environnement MSVC ---
 if ($Task -eq 'version') {
+    Enable-NodeEnv | Out-Null
     if ($Value) { Set-AppVersion $Value }
     Assert-SingleVersionSource
     Write-Host ("Version de l'application : {0}" -f (Get-AppVersion))
@@ -77,14 +110,15 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
 }
 
 Write-Host "MSVC + Rust prets." -ForegroundColor DarkGray
+Write-Host ("Node : {0}" -f (Enable-NodeEnv)) -ForegroundColor DarkGray
 
 switch ($Task) {
-    'dev' { & mise exec -- npm run tauri dev }
+    'dev' { & npm run tauri dev }
     'build' {
         # Ne jamais livrer un binaire dont la version a dérivé.
         Assert-SingleVersionSource
         Write-Host ("Build de la version {0}" -f (Get-AppVersion)) -ForegroundColor DarkGray
-        & mise exec -- npm run tauri build
+        & npm run tauri build
     }
     'test' { & cargo test --manifest-path src-tauri/Cargo.toml }
 }
