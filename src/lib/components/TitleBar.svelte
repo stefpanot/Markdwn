@@ -12,6 +12,26 @@
   }
   let { onNew, onCloseTab, onTabMenu, onAppMenu }: Props = $props();
 
+  let tabsStrip: HTMLDivElement;
+
+  /* Beaucoup d'onglets ouverts : la bande scrolle horizontalement au lieu de
+     tronquer en silence. La molette verticale devient un défilement
+     horizontal, geste attendu sur une barre d'onglets. */
+  function onTabsWheel(e: WheelEvent) {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.preventDefault();
+    tabsStrip.scrollLeft += e.deltaY;
+  }
+
+  /* Un changement d'onglet au clavier (palette, Alt+↑↓) doit ramener l'onglet
+     actif dans la partie visible de la bande. */
+  $effect(() => {
+    app.activeIndex;
+    tabsStrip
+      ?.querySelector(".tab.active")
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+
   function openAppMenu(e: MouseEvent) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     onAppMenu(r.left, r.bottom + 6);
@@ -45,7 +65,7 @@
     </button>
   </div>
 
-  <div class="tabs" data-tauri-drag-region>
+  <div class="tabs" data-tauri-drag-region bind:this={tabsStrip} onwheel={onTabsWheel}>
     {#each app.docs as doc, i (doc.id)}
       <div
         class="tab"
@@ -79,11 +99,13 @@
         </span>
       </div>
     {/each}
-
-    <button class="new" onclick={onNew} title="Nouveau document — Ctrl+N">
-      <Icon name="plus" size={15} />
-    </button>
   </div>
+
+  <!-- Hors de la bande scrollable : « nouveau » reste visible même quand les
+       onglets débordent. -->
+  <button class="new" onclick={onNew} title="Nouveau document — Ctrl+N">
+    <Icon name="plus" size={15} />
+  </button>
 
   <!-- Toute la place restante est saisissable, et le double-clic agrandit. -->
   <div class="grip" data-tauri-drag-region></div>
@@ -139,14 +161,22 @@
     pointer-events: none;
   }
 
-  /* Dimensionné au contenu, pas flex:1 : c'est ce qui libère .grip. */
+  /* Dimensionné au contenu, pas flex:1 : c'est ce qui libère .grip.
+     Scrollable plutôt que tronqué : un onglet caché sans indicateur est
+     inatteignable à la souris. La scrollbar resterait trop haute pour une
+     titlebar de 40px : masquée, la molette (ci-dessus) fait le travail. */
   .tabs {
     display: flex;
     align-items: center;
     gap: 3px;
     min-width: 0;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
     flex: 0 1 auto;
+  }
+  .tabs::-webkit-scrollbar {
+    display: none;
   }
 
   /* Garantie d'une cible réelle même avec beaucoup d'onglets ouverts. */
