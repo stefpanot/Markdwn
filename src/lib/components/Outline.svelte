@@ -97,6 +97,11 @@
   .item {
     display: block;
     width: 100%;
+    /* Garde critique : `overflow: hidden` ci-dessous ramène le min-height
+       automatique de ce flex item à zéro (spec flexbox). Sans flex-shrink: 0,
+       un document à beaucoup de titres écrase chaque bouton à quelques pixels
+       et le texte devient illisible. */
+    flex-shrink: 0;
     padding: 5px 10px;
     border-radius: var(--r-md);
     font-size: 12.5px;
