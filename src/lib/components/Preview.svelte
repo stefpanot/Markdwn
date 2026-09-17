@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { resolveAsset } from "$lib/api";
   import { app } from "$lib/state.svelte";
 
   interface Props {
@@ -49,6 +51,44 @@
     if (!host) return;
     host.addEventListener("click", onClick);
     return () => host.removeEventListener("click", onClick);
+  });
+
+  /* Images relatives : l'origine de la webview (localhost ou tauri://) ne
+     connaît pas le dossier du document, donc `assets/logo.svg` serait cassé.
+     On résout chaque src en Rust (percent-décodage, `..`, convention « /… »
+     relatif au document) puis on le réécrit vers le protocole asset: de Tauri.
+     Ça couvre aussi les <img> en HTML brut, que pulldown-cmark laisse passer
+     tels quels. Les résolutions sont mémorisées : un rendu débouncé ne
+     redemande pas ce qu'on sait déjà. */
+  const assetCache = new Map<string, string | null>();
+
+  $effect(() => {
+    void html; // dépendance : repatcher après chaque nouveau rendu
+    const host = scroller;
+    // Document jamais enregistré : pas de dossier de référence, rien à faire.
+    const docPath = app.active?.path ?? "";
+    if (!host || !docPath) return;
+    for (const img of host.querySelectorAll<HTMLImageElement>("img")) {
+      const src = img.getAttribute("src") ?? "";
+      if (!src) continue;
+      const key = `${docPath}${src}`;
+      const apply = (abs: string | null) => {
+        // L'élément a pu être remplacé par un rendu plus récent entre-temps.
+        if (abs && img.isConnected) img.src = convertFileSrc(abs);
+      };
+      if (assetCache.has(key)) {
+        apply(assetCache.get(key) ?? null);
+      } else {
+        resolveAsset(docPath, src)
+          .then((abs) => {
+            assetCache.set(key, abs);
+            apply(abs);
+          })
+          .catch(() => {
+            /* Hors Tauri (Vite nu) : on laisse le src tel quel. */
+          });
+      }
+    }
   });
 
   /** Amène l'ancre en haut de la zone lisible. Retourne false si l'ancre
