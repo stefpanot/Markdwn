@@ -1,8 +1,10 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
 
-  /* Le plan du document vit ici, en bas de la sidebar, et pas dans un panneau
-     séparé : c'est ce qu'on consulte le plus dans un long .md. */
+  /* Le plan du document n'existe qu'en UN exemplaire à la fois : variant
+     "panel" en bas de la sidebar (Split/Zen), variant "rail" en colonne
+     autonome du mode Lecture. Deux exemplaires simultanés semaient le doute
+     sur lequel suivre. */
   interface Props {
     onGoto: (line: number) => void;
     /** "rail" = colonne autonome du mode Lecture, "panel" = bas de sidebar. */

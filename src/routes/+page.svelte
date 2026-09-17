@@ -690,7 +690,9 @@
       />
       <div class="body">
         {#if app.sidebarVisible}
-          <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} />
+          <!-- Le plan vit dans le rail « Sur cette page » en Lecture : la
+               sidebar n'affiche que l'arborescence, jamais les deux. -->
+          <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} withOutline={false} />
         {/if}
         <Outline onGoto={gotoLine} variant="rail" activeLine={app.cursorLine} />
         <Preview bind:this={preview} variant="read" onLink={handleLink} />

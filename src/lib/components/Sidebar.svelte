@@ -8,8 +8,12 @@
     onOpenFolder: () => void;
     onOpenPath: (path: string) => void;
     onGoto: (line: number) => void;
+    /** Le plan du document n'a qu'une seule place à la fois : en bas de la
+        sidebar en Split/Zen, dans le rail « Sur cette page » en Lecture.
+        La sidebar du mode Lecture passe donc withOutline à false. */
+    withOutline?: boolean;
   }
-  let { onOpenFolder, onOpenPath, onGoto }: Props = $props();
+  let { onOpenFolder, onOpenPath, onGoto, withOutline = true }: Props = $props();
 
   const folderName = $derived(
     app.folderPath ? app.folderPath.split(/[\\/]/).filter(Boolean).pop() : "",
@@ -39,7 +43,7 @@
 
   <!-- Pas de plan quand il n'y a pas de document : un panneau qui annonce
        « aucun titre » sur l'écran d'accueil n'informe de rien. -->
-  {#if app.active}
+  {#if app.active && withOutline}
     <Outline {onGoto} activeLine={app.cursorLine} />
   {/if}
 </aside>
