@@ -44,18 +44,19 @@ Full list in the app menu (click the logo, top left).
 
 ## Installation
 
-Three artifacts are built for Windows, available in [releases](../../releases):
+Installers are built and published by the GitHub workflows on every tagged
+version (see [RELEASING.md](RELEASING.md)), available in
+[releases](../../releases):
 
-| Artifact | Use |
+| Platform | Artifacts |
 | --- | --- |
-| `Markdwn.exe` | Standalone executable, no install |
-| `Markdwn_x64_en-US.msi` | MSI installer (enterprise deployment) |
-| `Markdwn_x64-setup.exe` | Classic installer |
+| Windows | `Markdwn.exe` (portable), `Markdwn_x64-setup.exe` (NSIS), `Markdwn_x64_en-US.msi` |
+| macOS | `.dmg` for Apple Silicon and Intel |
+| Linux | `.deb`, `.rpm`, `.AppImage` |
 
-macOS and Linux are on the roadmap.
-
-> Binaries are unsigned: Windows SmartScreen will show an "Unknown publisher"
-> warning on first launch.
+> Binaries are unsigned: Windows SmartScreen and macOS Gatekeeper will warn on
+> first launch. macOS and Linux builds are produced by CI but still need
+> validation on real hardware (see [ROADMAP.md](ROADMAP.md), track 4).
 
 ## Tech stack
 

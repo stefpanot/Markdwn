@@ -44,18 +44,20 @@ Liste complète dans le menu applicatif (clic sur le logo, en haut à gauche).
 
 ## Installation
 
-Trois livrables sont produits pour Windows dans les [releases](../../releases) :
+Les installeurs sont buildés et publiés par les workflows GitHub à chaque
+version taguée (voir [RELEASING.md](RELEASING.md)), dans les
+[releases](../../releases) :
 
-| Artefact | Usage |
+| Plateforme | Artefacts |
 | --- | --- |
-| `Markdwn.exe` | Exécutable autonome, sans installation |
-| `Markdwn_x64_en-US.msi` | Installeur MSI (déploiement d'entreprise) |
-| `Markdwn_x64-setup.exe` | Installeur classique |
+| Windows | `Markdwn.exe` (portable), `Markdwn_x64-setup.exe` (NSIS), `Markdwn_x64_en-US.msi` |
+| macOS | `.dmg` Apple Silicon et Intel |
+| Linux | `.deb`, `.rpm`, `.AppImage` |
 
-macOS et Linux sont sur la feuille de route.
-
-> Les binaires ne sont pas signés : Windows SmartScreen affichera un
-> avertissement « Éditeur inconnu » au premier lancement.
+> Les binaires ne sont pas signés : Windows SmartScreen et macOS Gatekeeper
+> afficheront un avertissement au premier lancement. Les builds macOS et Linux
+> sont produits par la CI mais restent à valider sur machine réelle (voir
+> [ROADMAP.md](ROADMAP.md), piste 4).
 
 ## Stack technique
 
