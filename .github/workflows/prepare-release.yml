@@ -20,6 +20,9 @@ permissions:
 
 jobs:
   bump:
+    # Le job pousse HEAD sur main : lancé depuis une autre branche, il y
+    # pousserait son contenu. On refuse donc tout lancement hors main.
+    if: github.ref_name == 'main'
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.release.outputs.tag }}

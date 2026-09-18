@@ -7,15 +7,17 @@ La version a une **source unique** : `src-tauri/Cargo.toml` (gardée par
 
 1. Merger la PR du travail à publier sur `main`.
 2. Sur GitHub : **Actions → Prepare release → Run workflow**, saisir la version
-   (`X.Y.Z`, ou `X.Y.Z-beta.N` pour une beta).
+   (`X.Y.Z`, ou `X.Y.Z-beta.N` pour une beta). Le workflow refuse de tourner
+   depuis une autre branche que `main` : son push cible `main` directement.
 3. Le workflow :
    - écrit la version dans `Cargo.toml` et `Cargo.lock`, commit
      `chore: release vX.Y.Z` sur `main`, tag annoté `vX.Y.Z`, push ;
    - appelle `release.yml` qui vérifie tag ↔ version, lance les tests, build
      les installeurs des 4 cibles (Windows NSIS + MSI, Linux deb/rpm/AppImage,
      macOS arm64 + Intel) et publie la release GitHub avec `SHA256SUMS.txt`.
-4. Une beta (`-beta.N`) est marquée *pre-release*, non « latest », et ne
-   produit pas de MSI (versions numériques seulement).
+4. C'est le **format de la version** qui décide du canal, pas la branche :
+   `0.2.0` → release stable ; `0.2.0-beta.1` → pre-release, non « latest »,
+   sans MSI (versions numériques seulement).
 
 Pourquoi l'appel direct entre workflows : un tag poussé avec `GITHUB_TOKEN` ne
 déclenche pas les workflows `on: push` (limitation GitHub). `release.yml` est
