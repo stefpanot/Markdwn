@@ -22,6 +22,7 @@ that adapts to each rather than one layout trying to serve both.
 
 - **Three dedicated modes** — Reading (`Ctrl+1`), Split (`Ctrl+2`), Zen (`Ctrl+3`) — each with its own layout, not a toolbar toggle.
 - **Rust-powered Markdown rendering**, with a clickable outline and synced scrolling between editor and preview.
+- **Syntax highlighting for fenced code blocks** in the preview (syntect, in Rust), emitted as CSS classes so light and dark themes stay a pure stylesheet affair.
 - **Relative link resolution** between documents, including anchors and extension-less links.
 - **Relative images rendered in the preview** (`![…](images/x.png)` and raw `<img src="…">` alike), resolved from the document's folder.
 - **CodeMirror 6 editor** with Markdown syntax highlighting and quick formatting (bold, italic, link, list, quote).
@@ -69,7 +70,7 @@ macOS and Linux are on the roadmap.
 
 Actively developed. Working today: all three modes, editing and preview, link
 following, relative images in preview, tabs, themes, persisted configuration,
-command palette. Coming up: multi-file search, code block syntax highlighting,
+command palette, code block syntax highlighting. Coming up: multi-file search,
 macOS/Linux builds.
 
 ## License

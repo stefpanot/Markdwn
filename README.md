@@ -22,6 +22,7 @@ interface qui s'adapte à chacun plutôt qu'un mode unique à tout faire.
 
 - **Trois modes dédiés** — Lecture (`Ctrl+1`), Split (`Ctrl+2`), Zen (`Ctrl+3`) — chacun avec sa propre mise en page, pas un simple bouton de barre d'outils.
 - **Rendu Markdown en Rust**, avec sommaire cliquable et scroll synchronisé entre l'éditeur et l'aperçu.
+- **Coloration syntaxique des blocs de code** de l'aperçu (syntect, en Rust), émise en classes CSS pour rester sur les tokens des thèmes clair et sombre.
 - **Suivi des liens relatifs** entre documents, y compris ancres et fichiers sans extension.
 - **Images relatives affichées dans l'aperçu** (`![…](images/x.png)` comme `<img src="…">` en HTML brut), résolues depuis le dossier du document.
 - **Éditeur CodeMirror 6** avec coloration syntaxique Markdown et formatage rapide (gras, italique, lien, liste, citation).
@@ -69,9 +70,9 @@ macOS et Linux sont sur la feuille de route.
 
 En développement actif. Fonctionnel dès aujourd'hui : les trois modes, l'édition
 et l'aperçu, le suivi des liens, les images relatives dans l'aperçu, les
-onglets, les thèmes, la configuration persistée, la palette de commandes.
-À venir : recherche multi-fichiers, coloration syntaxique des blocs de code,
-portage macOS/Linux.
+onglets, les thèmes, la configuration persistée, la palette de commandes, la
+coloration syntaxique des blocs de code.
+À venir : recherche multi-fichiers, portage macOS/Linux.
 
 ## Licence
 

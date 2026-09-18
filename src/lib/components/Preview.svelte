@@ -157,6 +157,22 @@
     font-size: 15.5px;
     line-height: 1.72;
     color: var(--syn-text);
+    /* Coloration des blocs de code (syntect émet des classes, pas des styles
+       en ligne) : les couleurs vivent ici et suivent le thème comme le reste.
+       Palette resserrée : indigo pour la structure, terre cuite pour les
+       chaînes, sable pour les nombres, neutres pour le reste. */
+    --code-comment: var(--syn-punct);
+    --code-string: var(--accent-2-fg);
+    --code-keyword: var(--accent-fg);
+    --code-ident: var(--syn-strong);
+    --code-number: #d9b77c;
+    --code-type: #b9c0fa;
+    --code-invalid: #e06c75;
+  }
+  :global(:root[data-theme="light"]) .doc {
+    --code-number: #8a6a1f;
+    --code-type: #5a63d6;
+    --code-invalid: #c13e37;
   }
   .read .doc {
     padding: 34px 0 45vh;
@@ -278,6 +294,58 @@
     padding: 0;
     background: none;
     color: var(--syn-text);
+  }
+  /* Scopes syntect (ClassStyle::Spaced) : chaque atome du scope devient une
+     classe — `keyword.control.rust` donne class="keyword control rust", donc
+     on cible les racines communes. Règles génériques d'abord : la chaîne
+     l'emporte sur la ponctuation à spécificité égale. */
+  .doc :global(pre code .punctuation) {
+    color: var(--code-comment);
+  }
+  .doc :global(pre code .comment) {
+    color: var(--code-comment);
+    font-style: italic;
+  }
+  .doc :global(pre code .string),
+  .doc :global(pre code .constant.character) {
+    color: var(--code-string);
+  }
+  .doc :global(pre code .keyword),
+  .doc :global(pre code .storage),
+  .doc :global(pre code .variable.language),
+  .doc :global(pre code .entity.name.tag) {
+    color: var(--code-keyword);
+  }
+  .doc :global(pre code .constant.numeric),
+  .doc :global(pre code .constant.language),
+  .doc :global(pre code .support.constant),
+  .doc :global(pre code .entity.other.attribute-name) {
+    color: var(--code-number);
+  }
+  .doc :global(pre code .entity.name.function),
+  .doc :global(pre code .support.function),
+  .doc :global(pre code .support.macro) {
+    color: var(--code-ident);
+  }
+  .doc :global(pre code .entity.name.type),
+  .doc :global(pre code .support.type),
+  .doc :global(pre code .support.class) {
+    color: var(--code-type);
+  }
+  .doc :global(pre code .markup.heading) {
+    color: var(--code-keyword);
+  }
+  .doc :global(pre code .markup.bold) {
+    font-weight: 650;
+  }
+  .doc :global(pre code .markup.italic) {
+    font-style: italic;
+  }
+  .doc :global(pre code .markup.underline.link) {
+    color: var(--code-keyword);
+  }
+  .doc :global(pre code .invalid) {
+    color: var(--code-invalid);
   }
   .doc :global(table) {
     width: 100%;

@@ -27,6 +27,15 @@ tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 pulldown-cmark = "0.13"
+# Coloration des blocs de code au moment du rendu. `default-fancy` inclurait
+# aussi thèmes, plist/yaml et dump-create, inutiles ici : la sortie est en
+# classes CSS, pas en styles en ligne. `regex-fancy` est le moteur 100 % Rust
+# (fancy-regex) — pas d'oniguruma, donc rien de C à compiler sur la CI.
+syntect = { version = "5", default-features = false, features = [
+    "default-syntaxes",
+    "html",
+    "regex-fancy",
+] }
 # Les hrefs Markdown sont percent-encodés (les espaces en %20) ; déjà dans
 # l'arbre de dépendances de Tauri, donc gratuit au build.
 percent-encoding = "2"

@@ -6,10 +6,20 @@
 //! perdrait alors les définitions de liens par référence (`[a]: https://…`)
 //! placées ailleurs dans le fichier. À la place, on matérialise les événements
 //! puis on insère un marqueur inline avant chaque bloc de premier niveau.
+//!
+//! Les blocs de code clôturés (```) dont le langage est connu sont colorés
+//! avec syntect pendant cette même passe : leurs événements sont avalés et
+//! remplacés par un seul événement Html portant le `<pre><code>` déjà coloré.
+//! Sortie en CLASSES CSS (ClassStyle::Spaced), jamais en styles en ligne :
+//! le bascule clair/sombre reste purement affaire de tokens dans la webview.
 
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::LazyLock;
+use syntect::html::{ClassedHTMLGenerator, ClassStyle};
+use syntect::parsing::{SyntaxReference, SyntaxSet};
+use syntect::util::LinesWithEndings;
 
 #[derive(Debug, Serialize)]
 pub struct Heading {
@@ -107,9 +117,46 @@ fn is_block_tag(tag: &Tag) -> bool {
     )
 }
 
+/// Le jeu de syntaxes embarqué : décompresser le dump coûte quelques
+/// millisecondes, hors de question de le payer à chaque frappe (le rendu est
+/// relancé à chaque modification, débouncée mais fréquente).
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+
+/// Échappement minimal identique à celui que pulldown-cmark applique au
+/// contenu des blocs de code et à l'attribut `class` des `<code>`.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Colore le contenu d'un bloc clôturé et l'enveloppe dans le même
+/// `<pre><code class="language-…">` que produirait pulldown-cmark : les styles
+/// existants (fond, marge, mono) continuent de s'appliquer à l'identique.
+fn highlight_fenced(syntax: &SyntaxReference, token: &str, code: &str) -> String {
+    let mut gen =
+        ClassedHTMLGenerator::new_with_class_style(syntax, &SYNTAX_SET, ClassStyle::Spaced);
+    let mut ok = true;
+    for line in LinesWithEndings::from(code) {
+        if gen.parse_html_for_line_which_includes_newline(line).is_err() {
+            ok = false;
+            break;
+        }
+    }
+    // Repli inatteignable en pratique avec les dumps précompilés : si une
+    // regex fancy échouait, on servirait le code échappé sans coloration.
+    let body = if ok { gen.finalize() } else { escape_html(code) };
+    format!(
+        "<pre><code class=\"language-{}\">{}</code></pre>",
+        escape_html(token),
+        body
+    )
+}
+
 pub fn render(source: &str) -> Rendered {
     let starts = line_starts(source);
-    let parser = Parser::new_ext(source, options()).into_offset_iter();
+    let mut parser = Parser::new_ext(source, options()).into_offset_iter();
 
     let mut events: Vec<Event> = Vec::new();
     let mut headings: Vec<Heading> = Vec::new();
@@ -124,7 +171,36 @@ pub fn render(source: &str) -> Rendered {
     let mut heading_at: Vec<usize> = Vec::new();
     let mut slug_seen: HashMap<String, usize> = HashMap::new();
 
-    for (event, range) in parser {
+    while let Some((event, range)) = parser.next() {
+        // Bloc clôturé dont le langage est connu de syntect : on avale les
+        // événements jusqu'à la fin du bloc et on les remplace par le HTML
+        // coloré. Le Start/End étant consommés ensemble, la profondeur reste
+        // équilibrée ; les blocs indentés et les langages inconnus passent au
+        // flux normal, inchangé.
+        if let Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang))) = &event {
+            let token = lang.split_whitespace().next().unwrap_or("");
+            if let Some(syntax) = SYNTAX_SET.find_syntax_by_token(token) {
+                if depth == 0 {
+                    let line = line_of(&starts, range.start);
+                    events.push(Event::Html(
+                        format!("<span class=\"srcmap\" data-line=\"{line}\"></span>").into(),
+                    ));
+                }
+                let mut code = String::new();
+                for (inner, _) in parser.by_ref() {
+                    match inner {
+                        Event::End(TagEnd::CodeBlock) => break,
+                        Event::Text(t) | Event::Code(t) => {
+                            words += t.split_whitespace().count();
+                            code.push_str(&t);
+                        }
+                        _ => {}
+                    }
+                }
+                events.push(Event::Html(highlight_fenced(syntax, token, &code).into()));
+                continue;
+            }
+        }
         match &event {
             Event::Start(tag) => {
                 if is_block_tag(tag) && depth == 0 {
@@ -243,5 +319,56 @@ mod tests {
         assert_eq!(r.headings[1].slug, "notes-2");
         assert!(r.html.contains("id=\"notes\""));
         assert!(r.html.contains("id=\"notes-2\""));
+    }
+
+    #[test]
+    fn highlights_fenced_code_with_known_language() {
+        let r = render("```rust\nfn main() { let x = 1; }\n```\n");
+        // Même enveloppe qu'avant, pour garder les styles existants…
+        assert!(r.html.contains("<pre><code class=\"language-rust\">"));
+        // …mais le contenu est découpé en spans de classes de scopes syntect.
+        // `source rust` est le scope racine : il est toujours émis.
+        assert!(r.html.contains("<span class=\"source rust\">"));
+        assert!(r.html.matches("<span class=\"").count() > 1);
+        // Sortie en classes, jamais en styles en ligne.
+        assert!(!r.html.contains("style="));
+    }
+
+    #[test]
+    fn unknown_language_falls_back_to_plain_code() {
+        let r = render("```zz-nope\nnuqneH <qaH>\n```\n");
+        assert!(r.html.contains("<pre><code class=\"language-zz-nope\">"));
+        assert!(r.html.contains("nuqneH &lt;qaH&gt;"));
+        assert!(!r.html.contains("<span class=\"source"));
+    }
+
+    #[test]
+    fn bare_fence_falls_back_to_plain_code() {
+        let r = render("```\nlet x = 1;\n```\n");
+        assert!(r.html.contains("<pre><code>let x = 1;"));
+        assert!(!r.html.contains("<span class=\"source"));
+    }
+
+    #[test]
+    fn srcmap_markers_still_wrap_code_blocks() {
+        let r = render("Avant.\n\n```rust\nfn f() {}\n```\n\nAprès.\n");
+        // Le marqueur du bloc coloré porte la ligne de sa clôture ouvrante.
+        assert!(r.html.contains("data-line=\"3\""));
+        assert_eq!(r.html.matches("class=\"srcmap\"").count(), 3);
+    }
+
+    #[test]
+    fn indented_code_blocks_are_left_alone() {
+        let r = render("    let x = 1;\n");
+        assert!(r.html.contains("<pre><code>let x = 1;"));
+        assert!(!r.html.contains("<span class=\"source"));
+    }
+
+    #[test]
+    fn highlighted_code_is_still_counted_as_words() {
+        // Le code comptait avant la coloration ; l'interception le compte
+        // toujours (« let », « a », « = », « 1; »).
+        let r = render("```rust\nlet a = 1;\n```\n");
+        assert_eq!(r.words, 4);
     }
 }
