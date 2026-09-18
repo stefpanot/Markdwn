@@ -15,23 +15,14 @@ vit en Rust ; la mise en page reste dans la webview.
 - Plan du document : lisible sur les très longs documents, affiché en un seul
   exemplaire par mode.
 - Onglets scrollables quand ils débordent ; navigation regroupée et stable.
+- Coloration syntaxique des blocs de code (`syntect` en Rust, classes CSS —
+  le thème reste une affaire de feuille de style).
 
-## Piste 1 — Coloration syntaxique des blocs de code
+## Piste 1 — Badges langage et copie sur les blocs de code
 
-**Intention.** Les blocs de code de l'aperçu portent la coloration de leur
-langage. Candidat naturel : `syntect` côté Rust (coloration au moment du
-rendu, thèmes embarqués, zéro dépendance JS), avec sortie en classes CSS
-plutôt qu'en styles en ligne pour rester sur les tokens du thème clair/sombre.
-
-**À décider au démarrage.** Poids du binaire (quelques Mo de définitions de
-langages) vs coloration à la demande dans la webview.
-
-## Piste 1 bis — Badges langage et copie sur les blocs de code
-
-**Intention.** Chaque bloc de code de l'aperçu affiche son langage et un
-bouton « copier ». Pur travail de webview, aucun impact sur la couche Rust ;
-à enchaîner juste après la Piste 1 pour livrer les blocs de code complets en
-une seule passe.
+**Intention.** Au-delà de la coloration (livrée), chaque bloc de code de
+l'aperçu affiche son langage et un bouton « copier ». Pur travail de webview,
+aucun impact sur la couche Rust.
 
 ## Piste 2 — Recherche et remplacement (`Ctrl+H`)
 
@@ -90,7 +81,8 @@ copie. Ce qui suit trace les choix pour ne pas les re-débattre.
 
 **Retenu** (intégré aux pistes ci-dessus) :
 
-- Badges langage + bouton copier sur les blocs de code → Pistes 1 / 1 bis.
+- Badges langage + bouton copier sur les blocs de code → Piste 1 (coloration
+  déjà livrée).
 - Find in Files → Pistes 2 / 3.
 - Sauvegarde auto + backup, barre de statut → Piste 5.
 - Distraction Free / modes d'affichage → déjà couvert par les modes
