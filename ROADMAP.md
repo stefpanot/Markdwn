@@ -34,7 +34,10 @@ vit en Rust ; la mise en page reste dans la webview.
   déroute les double-clics suivants vers l'instance ouverte (événement
   `open-file`). L'installeur demande « pour moi uniquement » ou « pour tous
   les utilisateurs » (`installMode: both`, élévation admin seulement dans
-  le second cas).
+  le second cas). **Limite connue** : l'instance existante ouvre le fichier
+  mais ne prend pas le focus (reste en arrière-plan) — à corriger avec
+  `unminimize()` + `set_focus()` sur la fenêtre dans le callback
+  single-instance (vigilance : Windows bride le vol de focus, à valider).
 - Images relatives dans l'aperçu, y compris `<img>` en HTML brut.
 - Plan du document : lisible sur les très longs documents, affiché en un seul
   exemplaire par mode.
