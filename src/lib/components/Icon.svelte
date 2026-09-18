@@ -15,6 +15,8 @@
     "chevron-down": "M4 6l4 4 4-4",
     "chevron-up": "M4 10l4-4 4 4",
     "search": "M10.2 10.2l3 3",
+    "replace": "M2.6 8h6 M5.4 5.2L8 8l-2.6 2.8 M10 3.4v9.2",
+    "replace-all": "M2.4 4.6h3.6 M4.4 2.6L6.4 4.6 4.4 6.6 M2.4 11.4h3.6 M4.4 9.4l2 2-2 2 M9.4 3.4v9.2",
     "plus": "M8 3.8v8.4M3.8 8h8.4",
     "close": "M3.5 3.5l9 9M12.5 3.5l-9 9",
     "minimise": "M2.5 8h11",

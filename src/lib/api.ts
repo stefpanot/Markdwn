@@ -86,3 +86,37 @@ export const resolveLink = (from: string, href: string) =>
     (URL distante, data URI, src vide) : le front n'a pas à filtrer. */
 export const resolveAsset = (from: string, src: string) =>
   invoke<string | null>("resolve_asset", { from, src });
+
+
+/** Miroir de `search::SearchOptions` (serde camelCase). */
+export interface SearchOptions {
+  caseSensitive: boolean;
+  wholeWord: boolean;
+}
+
+/** Miroir de `search::Match` : positions en unités UTF-16, celles de
+ * JavaScript ET de CodeMirror — le front les consomme sans conversion. */
+export interface SearchMatch {
+  index: number;
+  len: number;
+  line: number;
+  col: number;
+  /** Texte matché, à revérifier avant de remplacer (offsets périmés). */
+  text: string;
+}
+
+/** Moteur de recherche du document courant (vit en Rust). */
+export const findInDocument = (source: string, query: string, options: SearchOptions) =>
+  invoke<SearchMatch[]>("find_in_document", { source, query, options });
+
+/** Remplacement littéral de toutes les occurrences (vit en Rust). */
+export const replaceInDocument = (
+  source: string,
+  query: string,
+  replacement: string,
+  options: SearchOptions,
+) => invoke<string>("replace_in_document", { source, query, replacement, options });
+
+/** Fichier passé sur la ligne de commande au lancement (association Windows
+ * « ouvrir avec »). `null` après le premier appel ou si rien n'a été passé. */
+export const consumeInitialFile = () => invoke<string | null>("consume_initial_file");

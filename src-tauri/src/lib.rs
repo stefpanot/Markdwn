@@ -1,8 +1,11 @@
 mod config;
 mod markdown;
+mod search;
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use tauri::Emitter;
 use tauri::Manager;
 
 #[derive(Debug, Serialize)]
@@ -49,6 +52,47 @@ fn read_document(path: String) -> Result<Document, String> {
 #[tauri::command]
 fn write_document(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| format!("{path} : {e}"))
+}
+
+/// Occurrences d'une query dans le document courant, positions UTF-16 prêtes
+/// pour CodeMirror. Socle de la recherche multi-fichiers (Piste 3).
+#[tauri::command]
+fn find_in_document(
+    source: String,
+    query: String,
+    options: search::SearchOptions,
+) -> Vec<search::Match> {
+    search::find_matches(&source, &query, options)
+}
+
+/// Document avec toutes les occurrences remplacées (littéral, non chevauchant).
+#[tauri::command]
+fn replace_in_document(
+    source: String,
+    query: String,
+    replacement: String,
+    options: search::SearchOptions,
+) -> String {
+    search::replace_all(&source, &query, &replacement, options)
+}
+
+/// Premier fichier Markdown trouvé dans une liste d'arguments (ligne de
+/// commande Windows, y compris celle construite par l'association « ouvrir
+/// avec »). Filtre les flags et tout ce qui n'est pas un fichier existant.
+fn markdown_arg(args: impl IntoIterator<Item = String>) -> Option<String> {
+    args.into_iter()
+        .filter(|a| !a.starts_with('-'))
+        .find(|a| {
+            let p = Path::new(a);
+            p.is_file() && is_markdown(p)
+        })
+}
+
+/// Chemin du fichier passé au lancement, consommé par la webview juste après
+/// l'hydratation. `take` : un second appel ne rouvre pas le document.
+#[tauri::command]
+fn consume_initial_file(state: tauri::State<Mutex<Option<String>>>) -> Option<String> {
+    state.lock().ok()?.take()
 }
 
 /// Dossiers et fichiers Markdown seulement — c'est un éditeur Markdown, pas un
@@ -283,16 +327,34 @@ fn file_name_of(p: &Path) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // « Ouvrir avec » sous Windows lance markdwn.exe <chemin.md> ; on le
+    // récupère pour la webview. L'état partagé évite la course : la webview
+    // le consomme quand elle est prête (voir consume_initial_file).
+    let initial_file = markdown_arg(std::env::args().skip(1));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // Instance déjà ouverte : Windows lance une deuxième copie, le
+            // plugin la déroute ici — on transmet le fichier à la fenêtre.
+            if let Some(path) = markdown_arg(args) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("open-file", path);
+                }
+            }
+        }))
         // Taille et position de la fenêtre : le plugin officiel s'en charge,
         // dans son propre fichier d'état. Inutile de le refaire dans config.json.
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .manage(Mutex::new(initial_file))
         .invoke_handler(tauri::generate_handler![
             render_markdown,
             read_document,
             write_document,
+            find_in_document,
+            replace_in_document,
+            consume_initial_file,
             list_dir,
             list_markdown_tree,
             resolve_link,
@@ -405,6 +467,24 @@ mod tests {
             None
         );
         assert_eq!(resolve_asset(from, "  ".into()).unwrap(), None);
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn picks_the_markdown_file_from_launch_args() {
+        let root = std::env::temp_dir().join(format!("mde-args-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("note.md"), "n").unwrap();
+        std::fs::write(root.join("image.png"), "p").unwrap();
+        let md = root.join("note.md").to_string_lossy().into_owned();
+        let png = root.join("image.png").to_string_lossy().into_owned();
+
+        // flags ignorés, image ignorée : seul le .md compte
+        let found = markdown_arg(vec!["--devtools".to_string(), png, md.clone()]);
+        assert_eq!(found.as_deref(), Some(md.as_str()));
+        // rien à ouvrir
+        assert_eq!(markdown_arg(vec!["--devtools".to_string()]), None);
 
         std::fs::remove_dir_all(&root).unwrap();
     }

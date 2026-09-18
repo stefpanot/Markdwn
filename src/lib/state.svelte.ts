@@ -31,14 +31,22 @@ const WELCOME = `# Markdwn
 | Split   | Ctrl+2    | écrire en vérifiant     |
 | Zen     | Ctrl+3    | écrire, le reste s'efface |
 
-## Ce qui vit en Rust
+## Au quotidien
 
-Le parsing, le sommaire et les compteurs. \`pulldown-cmark\` expose les offsets
-d'octets de chaque bloc, donc le scroll synchronisé et le plan du document
-viennent presque gratuitement.
+| Action                    | Raccourci    |
+| ------------------------- | ------------ |
+| Palette de commandes      | Ctrl+K       |
+| Rechercher et remplacer   | Ctrl+H       |
+| Ouvrir un fichier         | Ctrl+O       |
+| Enregistrer               | Ctrl+S       |
+| Enregistrer sous (copie)  | Ctrl+Shift+S |
 
-> Règle : tout ce qui touche au disque et au parsing descend en Rust.
-> Tout ce qui touche à la mise en page reste dans la webview.
+Un double-clic sur un \`.md\` dans l'Explorateur l'ouvre directement ici.
+
+## Et aussi
+
+Coloration syntaxique, plan du document cliquable, aperçu en direct et
+navigation entre les fichiers d'un dossier.
 `;
 
 let nextId = 1;

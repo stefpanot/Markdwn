@@ -22,16 +22,22 @@
   } from "$lib/components/CommandPalette.svelte";
   import {
     appVersion,
+    consumeInitialFile,
+    findInDocument,
     listDir,
     listMarkdownTree,
     loadConfig,
     readDocument,
     renderMarkdown,
+    replaceInDocument,
     resolveLink,
     saveConfig,
     writeDocument,
+    type SearchMatch,
   } from "$lib/api";
   import { app } from "$lib/state.svelte";
+  import { listen } from "@tauri-apps/api/event";
+  import FindPanel from "$lib/components/FindPanel.svelte";
 
   let editor = $state<ReturnType<typeof Editor> | undefined>();
   let preview = $state<ReturnType<typeof Preview> | undefined>();
@@ -64,6 +70,19 @@
         /* Hors Tauri (serveur Vite nu) : on reste sur les valeurs par défaut. */
       } finally {
         app.hydrated = true;
+      }
+      // Fichier passé au lancement (association Windows « ouvrir avec ») :
+      // ouvert une fois hydraté. L'écoute « open-file » couvre les
+      // double-clics suivants, déroutés par le plugin single-instance vers
+      // l'instance existante au lieu d'en lancer une seconde.
+      try {
+        const initial = await consumeInitialFile();
+        if (initial) await openPath(initial);
+        await listen<string>("open-file", (e) => {
+          void openPath(e.payload);
+        });
+      } catch {
+        /* Hors Tauri : ni argument ni événement à traiter. */
       }
     })();
   });
@@ -228,30 +247,152 @@
     }
   }
 
-  async function save() {
+  // Dialogue natif commun à Enregistrer (document sans chemin) et Enregistrer
+  // sous. `null` = dialogue annulé ou indisponible (hors Tauri).
+  async function pickSavePath(defaultPath: string): Promise<string | null> {
+    let picked: string | null = null;
+    try {
+      picked = await saveDialog({
+        defaultPath,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+    } catch {
+      // Même garde que openFile : le dialogue est un plugin Tauri.
+      error = "Enregistrer sous n'est disponible que dans l'application de bureau.";
+      return null;
+    }
+    return typeof picked === "string" ? picked : null;
+  }
+
+  async function writeTo(path: string) {
     const doc = app.active;
     if (!doc) return;
-    let path = doc.path;
-    if (!path) {
-      let picked: string | null = null;
-      try {
-        picked = await saveDialog({
-          defaultPath: doc.name,
-          filters: [{ name: "Markdown", extensions: ["md"] }],
-        });
-      } catch {
-        // Même garde que openFile : le dialogue est un plugin Tauri.
-        error = "Enregistrer sous n'est disponible que dans l'application de bureau.";
-        return;
-      }
-      if (typeof picked !== "string") return;
-      path = picked;
-    }
     try {
       await writeDocument(path, doc.content);
+      // L'onglet suit le nouveau chemin : après un « sous », les Ctrl+S
+      // suivants écrivent à la copie, l'original reste intact.
       app.markSaved(path, path.split(/[\\/]/).pop() ?? doc.name);
       if (app.folderPath) await refreshFolder(app.folderPath);
       error = "";
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function save() {
+    const doc = app.active;
+    if (!doc) return;
+    const path = doc.path ?? (await pickSavePath(doc.name));
+    if (path) await writeTo(path);
+  }
+
+  async function saveAs() {
+    const doc = app.active;
+    if (!doc) return;
+    // Chemin courant par défaut : permet de renommer en un clic sans naviguer.
+    const path = await pickSavePath(doc.path ?? doc.name);
+    if (path) await writeTo(path);
+  }
+
+  /* ---------- recherche / remplacement (Ctrl+H) ---------- */
+  let findOpen = $state(false);
+  let findQuery = $state("");
+  let findReplacement = $state("");
+  let findCase = $state(false);
+  let findWord = $state(false);
+  let findMatches = $state<SearchMatch[]>([]);
+  let findCurrent = $state(0);
+  let findPanel = $state<ReturnType<typeof FindPanel> | undefined>(undefined);
+  /** Signature de la dernière recherche qui a SÉLECTIONNÉ : la frappe dans le
+      document recalcule les occurrences sans voler la sélection ; seule une
+      requête ou une option différente re-sélectionne. */
+  let findSignature = "";
+  let findSeq = 0;
+
+  function openFind() {
+    if (app.mode !== "split") return;
+    findOpen = true;
+    // Ctrl+H sur un panneau déjà ouvert : recentrer la saisie.
+    findPanel?.focusQuery();
+  }
+
+  function closeFind() {
+    findOpen = false;
+    editor?.focus();
+  }
+
+  function selectFindMatch() {
+    const m = findMatches[findCurrent];
+    if (m) editor?.selectRange(m.index, m.index + m.len);
+  }
+
+  // Recalcul des occurrences : debounce comme le rendu, lecture réactive de la
+  // requête, des options et du contenu. Le moteur vit en Rust (Piste 2).
+  $effect(() => {
+    const query = findQuery;
+    const options = { caseSensitive: findCase, wholeWord: findWord };
+    const content = app.active?.content;
+    const seq = ++findSeq;
+    if (!findOpen || !query || content === undefined) {
+      // Réinitialiser la signature : rouvrir le panneau avec la même requête
+      // doit re-sélectionner, pas rester sur « aucun résultat » figé.
+      findSignature = "";
+      findMatches = [];
+      findCurrent = 0;
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const found = await findInDocument(content, query, options);
+        // Réponse périmée : une frappe plus récente a relancé le calcul.
+        if (seq !== findSeq) return;
+        // Contenu modifié entre-temps : le prochain déclenchement corrigera.
+        if (app.active?.content !== content) return;
+        findMatches = found;
+        if (findCurrent > found.length - 1) findCurrent = Math.max(0, found.length - 1);
+        const signature = JSON.stringify([query, findCase, findWord]);
+        if (signature !== findSignature) {
+          findSignature = signature;
+          selectFindMatch();
+        }
+      } catch (e) {
+        error = String(e);
+      }
+    }, 80);
+    return () => clearTimeout(handle);
+  });
+
+  function nextFind() {
+    if (findMatches.length === 0) return;
+    findCurrent = (findCurrent + 1) % findMatches.length;
+    selectFindMatch();
+  }
+
+  function prevFind() {
+    if (findMatches.length === 0) return;
+    findCurrent = (findCurrent - 1 + findMatches.length) % findMatches.length;
+    selectFindMatch();
+  }
+
+  function replaceFind() {
+    const m = findMatches[findCurrent];
+    const doc = app.active;
+    if (!m || !doc) return;
+    // Garde contre les offsets périmés : le recalcul est débouncé, un double
+    // clic rapide ne doit pas écrire à un endroit qui a bougé.
+    if (doc.content.slice(m.index, m.index + m.len) !== m.text) return;
+    editor?.replaceRange(m.index, m.index + m.len, findReplacement);
+    // Le changement de contenu relance le recalcul ; l'occurrence suivante se
+    // retrouve à l'indice courant — comportement « avancer ».
+  }
+
+  async function replaceAllFind() {
+    const content = app.active?.content;
+    if (!content || !findQuery) return;
+    try {
+      const options = { caseSensitive: findCase, wholeWord: findWord };
+      const next = await replaceInDocument(content, findQuery, findReplacement, options);
+      if (next !== content) editor?.setContent(next);
     } catch (e) {
       error = String(e);
     }
@@ -373,6 +514,19 @@
       run: save,
     },
     {
+      label: "Enregistrer sous…",
+      keys: "Ctrl+Shift+S",
+      disabled: !app.active,
+      run: saveAs,
+    },
+    {
+      label: "Rechercher et remplacer…",
+      keys: "Ctrl+H",
+      disabled: app.mode !== "split",
+      separatorBefore: true,
+      run: openFind,
+    },
+    {
       label: "Lecture",
       keys: "Ctrl+1",
       checked: app.mode === "read",
@@ -416,6 +570,26 @@
             keys: "Ctrl+S",
             run: save,
           } satisfies PaletteCommand,
+          {
+            id: "save-as",
+            label: "Enregistrer sous…",
+            icon: "save",
+            keywords: "dupliquer copie copier renommer export",
+            keys: "Ctrl+Shift+S",
+            run: saveAs,
+          } satisfies PaletteCommand,
+          ...(app.mode === "split"
+            ? [
+                {
+                  id: "find",
+                  label: "Rechercher et remplacer…",
+                  icon: "search",
+                  keywords: "chercher search replace",
+                  keys: "Ctrl+H",
+                  run: openFind,
+                } satisfies PaletteCommand,
+              ]
+            : []),
           {
             id: "close-tab",
             label: "Fermer l'onglet",
@@ -544,6 +718,19 @@
 
     const ctrl = e.ctrlKey || e.metaKey;
     if (!ctrl) {
+      // F5 rechargerait la webview (accélérateur WebView2) et ferait perdre
+      // l'état en mémoire, documents non enregistrés compris. On avale.
+      if (e.key === "F5") {
+        e.preventDefault();
+        return;
+      }
+      // Échap ferme d'abord la recherche ouverte (depuis l'éditeur ; depuis le
+      // panneau, celui-ci ferme aussi et ce garde devient un no-op).
+      if (e.key === "Escape" && findOpen) {
+        e.preventDefault();
+        closeFind();
+        return;
+      }
       // Échap ferme d'abord les paramètres : sinon on sortirait du Zen sans
       // même voir le panneau se fermer.
       if (e.key === "Escape" && app.mode === "zen" && !app.settingsOpen) app.mode = "split";
@@ -566,11 +753,26 @@
       case "s":
         save();
         break;
+      // Avec Maj enfoncée, `key` est la lettre en capitale.
+      case "S":
+        saveAs();
+        break;
       case "o":
         openFile();
         break;
       case "k":
         app.paletteOpen = true;
+        break;
+      // WebView2 traite Ctrl+R et Ctrl+Shift+R comme un navigateur :
+      // recharger la page effacerait l'état en mémoire. On avale (pareil
+      // pour Ctrl+F5 dans le cas "F5" ci-dessous).
+      case "r":
+      case "R":
+        break;
+      case "F5":
+        break;
+      case "h":
+        openFind();
         break;
       case "n":
         newDocument();
@@ -699,6 +901,26 @@
       </div>
     {:else}
       <Toolbar onOpenFolder={openFolder} onOpenFile={openFile} onSave={save} onFormat={format} />
+      {#if findOpen}
+        <FindPanel
+          bind:this={findPanel}
+          query={findQuery}
+          replacement={findReplacement}
+          caseSensitive={findCase}
+          wholeWord={findWord}
+          current={findCurrent}
+          total={findMatches.length}
+          onQueryChange={(v) => (findQuery = v)}
+          onReplacementChange={(v) => (findReplacement = v)}
+          onToggleCase={() => (findCase = !findCase)}
+          onToggleWord={() => (findWord = !findWord)}
+          onNext={nextFind}
+          onPrev={prevFind}
+          onReplace={replaceFind}
+          onReplaceAll={replaceAllFind}
+          onClose={closeFind}
+        />
+      {/if}
       <div class="body">
         {#if app.sidebarVisible}
           <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} />
