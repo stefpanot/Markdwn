@@ -39,9 +39,14 @@ jobs:
       - id: version
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
+          # Piège GitHub : dans un workflow réutilisable, `github.event_name`
+          # reste celui de L'APPELANT (workflow_dispatch depuis prepare-
+          # release.yml), il ne vaut jamais "workflow_call". Seule `inputs.tag`
+          # trahit l'appel — c'est elle qu'on teste.
+          CALLED: ${{ inputs.tag }}
           EVENT: ${{ github.event_name }}
         run: |
-          if [ "$EVENT" = push ] || [ "$EVENT" = workflow_call ]; then
+          if [ "$EVENT" = push ] || [ -n "$CALLED" ]; then
             node scripts/version.mjs tag "$TAG"
           else
             node scripts/version.mjs check
@@ -51,10 +56,11 @@ jobs:
         env:
           # Sur un push de tag, inputs.tag est vide : le tag est le ref.
           TAG: ${{ inputs.tag || github.ref_name }}
+          CALLED: ${{ inputs.tag }}
           EVENT: ${{ github.event_name }}
         run: |
           publish=false
-          if [ "$EVENT" = push ] || [ "$EVENT" = workflow_call ]; then
+          if [ "$EVENT" = push ] || [ -n "$CALLED" ]; then
             publish=true
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
