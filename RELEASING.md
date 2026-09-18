@@ -19,6 +19,25 @@ La version a une **source unique** : `src-tauri/Cargo.toml` (gardée par
    `0.2.0` → release stable ; `0.2.0-beta.1` → pre-release, non « latest »,
    sans MSI (versions numériques seulement).
 
+## Publier une beta : le cycle complet
+
+Même bouton, même workflow — seule la version saisie change. Exemple de cycle :
+
+1. **Première beta** : Actions → Prepare release → `0.2.0-beta.1`.
+   Résultat : release GitHub estampillée *Pre-release*, la release stable
+   précédente reste celle mise en avant (« Latest ») sur la page du dépôt.
+2. **Beta suivante** : Prepare release → `0.2.0-beta.2`, et ainsi de suite.
+   C'est toi qui incrémentes le `N` (obligatoire, à partir de 1) : le script
+   ne devine pas le numéro précédent.
+3. **Stable finale** : Prepare release → `0.2.0`. Le workflow fait passer
+   `Cargo.toml` de `0.2.0-beta.2` à `0.2.0` comme n'importe quel bump.
+
+Entre une beta et la stable, `Cargo.toml` sur `main` porte donc la version
+beta : c'est normal et sans conséquence — la CI quotidienne ne publie rien,
+seul le tag déclenche une release. Sous Windows, une beta ne produit pas de
+MSI (les versions produit MSI sont purement numériques) : NSIS + portable
+seulement.
+
 Pourquoi l'appel direct entre workflows : un tag poussé avec `GITHUB_TOKEN` ne
 déclenche pas les workflows `on: push` (limitation GitHub). `release.yml` est
 donc aussi un `workflow_call` que « Prepare release » invoque après le tag.
