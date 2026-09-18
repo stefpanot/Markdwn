@@ -80,3 +80,9 @@ export interface ResolvedLink {
     `..` et le décodage percent vivent en Rust. */
 export const resolveLink = (from: string, href: string) =>
   invoke<ResolvedLink>("resolve_link", { from, href });
+
+/** Résout le src d'une image relative vers un chemin absolu, à passer ensuite
+    à `convertFileSrc`. Renvoie `null` pour tout ce qu'il ne faut pas réécrire
+    (URL distante, data URI, src vide) : le front n'a pas à filtrer. */
+export const resolveAsset = (from: string, src: string) =>
+  invoke<string | null>("resolve_asset", { from, src });

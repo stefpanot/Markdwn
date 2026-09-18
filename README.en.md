@@ -22,9 +22,12 @@ that adapts to each rather than one layout trying to serve both.
 
 - **Three dedicated modes** — Reading (`Ctrl+1`), Split (`Ctrl+2`), Zen (`Ctrl+3`) — each with its own layout, not a toolbar toggle.
 - **Rust-powered Markdown rendering**, with a clickable outline and synced scrolling between editor and preview.
+- **Syntax highlighting for fenced code blocks** in the preview (syntect, in Rust), emitted as CSS classes so light and dark themes stay a pure stylesheet affair.
 - **Relative link resolution** between documents, including anchors and extension-less links.
+- **Relative images rendered in the preview** (`![…](images/x.png)` and raw `<img src="…">` alike), resolved from the document's folder.
 - **CodeMirror 6 editor** with Markdown syntax highlighting and quick formatting (bold, italic, link, list, quote).
 - **Multi-document tabs**, light and dark themes, a collapsible folder tree.
+- **Command palette** (`Ctrl+K`) with fuzzy search over the open folder's files and every app command; `>` restricts it to commands.
 
 ## Essential shortcuts
 
@@ -32,6 +35,7 @@ that adapts to each rather than one layout trying to serve both.
 | --- | --- |
 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Reading / Split / Zen |
 | `Ctrl+O` / `Ctrl+S` / `Ctrl+N` | Open / Save / New |
+| `Ctrl+K` | Command palette |
 | `Ctrl+B` | Toggle folder sidebar |
 | `Ctrl+W` | Close tab |
 | `Ctrl+,` | Settings |
@@ -40,29 +44,35 @@ Full list in the app menu (click the logo, top left).
 
 ## Installation
 
-Three artifacts are built for Windows, available in [releases](../../releases):
+Installers are built and published by the GitHub workflows on every tagged
+version (see [RELEASING.md](RELEASING.md)), available in
+[releases](../../releases):
 
-| Artifact | Use |
+| Platform | Artifacts |
 | --- | --- |
-| `Markdwn.exe` | Standalone executable, no install |
-| `Markdwn_x64_en-US.msi` | MSI installer (enterprise deployment) |
-| `Markdwn_x64-setup.exe` | Classic installer |
+| Windows | `Markdwn.exe` (portable), `Markdwn_x64-setup.exe` (NSIS), `Markdwn_x64_en-US.msi` |
+| macOS | `.dmg` for Apple Silicon and Intel |
+| Linux | `.deb`, `.rpm`, `.AppImage` |
 
-macOS and Linux are on the roadmap.
-
-> Binaries are unsigned: Windows SmartScreen will show an "Unknown publisher"
-> warning on first launch.
+> Binaries are unsigned: Windows SmartScreen and macOS Gatekeeper will warn on
+> first launch. macOS and Linux builds are produced by CI but still need
+> validation on real hardware (see [ROADMAP.md](ROADMAP.md), track 4).
 
 ## Tech stack
 
 **Tauri 2** (native shell) · **Svelte 5** (UI) · **CodeMirror 6** (editor) · **Rust** (disk access and Markdown parsing).
 
+> To develop: `.\dev.ps1` (Windows) loads the MSVC environment, then runs
+> `tauri dev`. Running `npm run dev` alone opens the UI in a plain browser,
+> **without disk access** — a degraded mode meant for UI work only, not a
+> supported usage: Markdwn is a desktop application.
+
 ## Project status
 
 Actively developed. Working today: all three modes, editing and preview, link
-following, tabs, themes, persisted configuration. Coming up: relative images
-in preview, command palette, multi-file search, code block syntax
-highlighting, macOS/Linux builds.
+following, relative images in preview, tabs, themes, persisted configuration,
+command palette, code block syntax highlighting. Coming up: multi-file search,
+macOS/Linux builds.
 
 ## License
 

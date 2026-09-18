@@ -43,6 +43,9 @@
 </script>
 
 <div class="bar">
+  <!-- Toute la navigation est regroupée à gauche : historique entre documents
+       puis fichier précédent/suivant. Le fil d'Ariane, de longueur variable,
+       vient APRÈS : les boutons ne bougent plus quand le chemin change. -->
   <div class="history">
     <button class="icon-btn" onclick={onBack} disabled={!canBack} title="Reculer dans l'historique">
       <Icon name="arrow-left" size={16} width={1.6} />
@@ -56,20 +59,6 @@
       <Icon name="arrow-right" size={16} width={1.6} />
     </button>
   </div>
-
-  <div class="divider"></div>
-
-  <div class="crumbs">
-    <span class="crumb-icon"><Icon name="folder" size={14} width={1.4} /></span>
-    {#each crumbs as part, i (i)}
-      {#if i > 0}
-        <span class="sep"><Icon name="chevron-right" size={12} width={1.6} /></span>
-      {/if}
-      <span class="crumb" class:last={i === crumbs.length - 1}>{part}</span>
-    {/each}
-  </div>
-
-  <div class="divider"></div>
 
   <!-- Parcourir le dossier sans quitter la lecture. -->
   <div class="history">
@@ -89,6 +78,18 @@
     >
       <Icon name="chevron-down" size={16} width={1.6} />
     </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="crumbs">
+    <span class="crumb-icon"><Icon name="folder" size={14} width={1.4} /></span>
+    {#each crumbs as part, i (i)}
+      {#if i > 0}
+        <span class="sep"><Icon name="chevron-right" size={12} width={1.6} /></span>
+      {/if}
+      <span class="crumb" class:last={i === crumbs.length - 1}>{part}</span>
+    {/each}
   </div>
 
   <!-- L'espace vide sert aussi à déplacer la fenêtre. -->
@@ -158,16 +159,20 @@
     align-items: center;
     gap: 7px;
     min-width: 0;
+    overflow: hidden;
   }
   .crumb-icon,
   .sep {
     display: flex;
     color: var(--fg-3);
+    flex-shrink: 0;
   }
   .crumb {
     font-size: 12.5px;
     color: var(--fg-2);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .crumb.last {
     font-weight: 500;

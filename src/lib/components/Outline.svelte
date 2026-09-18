@@ -1,8 +1,10 @@
 <script lang="ts">
   import { app } from "$lib/state.svelte";
 
-  /* Le plan du document vit ici, en bas de la sidebar, et pas dans un panneau
-     séparé : c'est ce qu'on consulte le plus dans un long .md. */
+  /* Le plan du document n'existe qu'en UN exemplaire à la fois : variant
+     "panel" en bas de la sidebar (Split/Zen), variant "rail" en colonne
+     autonome du mode Lecture. Deux exemplaires simultanés semaient le doute
+     sur lequel suivre. */
   interface Props {
     onGoto: (line: number) => void;
     /** "rail" = colonne autonome du mode Lecture, "panel" = bas de sidebar. */
@@ -97,6 +99,11 @@
   .item {
     display: block;
     width: 100%;
+    /* Garde critique : `overflow: hidden` ci-dessous ramène le min-height
+       automatique de ce flex item à zéro (spec flexbox). Sans flex-shrink: 0,
+       un document à beaucoup de titres écrase chaque bouton à quelques pixels
+       et le texte devient illisible. */
+    flex-shrink: 0;
     padding: 5px 10px;
     border-radius: var(--r-md);
     font-size: 12.5px;

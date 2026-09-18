@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { resolveAsset } from "$lib/api";
   import { app } from "$lib/state.svelte";
 
   interface Props {
@@ -49,6 +51,44 @@
     if (!host) return;
     host.addEventListener("click", onClick);
     return () => host.removeEventListener("click", onClick);
+  });
+
+  /* Images relatives : l'origine de la webview (localhost ou tauri://) ne
+     connaît pas le dossier du document, donc `assets/logo.svg` serait cassé.
+     On résout chaque src en Rust (percent-décodage, `..`, convention « /… »
+     relatif au document) puis on le réécrit vers le protocole asset: de Tauri.
+     Ça couvre aussi les <img> en HTML brut, que pulldown-cmark laisse passer
+     tels quels. Les résolutions sont mémorisées : un rendu débouncé ne
+     redemande pas ce qu'on sait déjà. */
+  const assetCache = new Map<string, string | null>();
+
+  $effect(() => {
+    void html; // dépendance : repatcher après chaque nouveau rendu
+    const host = scroller;
+    // Document jamais enregistré : pas de dossier de référence, rien à faire.
+    const docPath = app.active?.path ?? "";
+    if (!host || !docPath) return;
+    for (const img of host.querySelectorAll<HTMLImageElement>("img")) {
+      const src = img.getAttribute("src") ?? "";
+      if (!src) continue;
+      const key = `${docPath}${src}`;
+      const apply = (abs: string | null) => {
+        // L'élément a pu être remplacé par un rendu plus récent entre-temps.
+        if (abs && img.isConnected) img.src = convertFileSrc(abs);
+      };
+      if (assetCache.has(key)) {
+        apply(assetCache.get(key) ?? null);
+      } else {
+        resolveAsset(docPath, src)
+          .then((abs) => {
+            assetCache.set(key, abs);
+            apply(abs);
+          })
+          .catch(() => {
+            /* Hors Tauri (Vite nu) : on laisse le src tel quel. */
+          });
+      }
+    }
   });
 
   /** Amène l'ancre en haut de la zone lisible. Retourne false si l'ancre
@@ -117,6 +157,22 @@
     font-size: 15.5px;
     line-height: 1.72;
     color: var(--syn-text);
+    /* Coloration des blocs de code (syntect émet des classes, pas des styles
+       en ligne) : les couleurs vivent ici et suivent le thème comme le reste.
+       Palette resserrée : indigo pour la structure, terre cuite pour les
+       chaînes, sable pour les nombres, neutres pour le reste. */
+    --code-comment: var(--syn-punct);
+    --code-string: var(--accent-2-fg);
+    --code-keyword: var(--accent-fg);
+    --code-ident: var(--syn-strong);
+    --code-number: #d9b77c;
+    --code-type: #b9c0fa;
+    --code-invalid: #e06c75;
+  }
+  :global(:root[data-theme="light"]) .doc {
+    --code-number: #8a6a1f;
+    --code-type: #5a63d6;
+    --code-invalid: #c13e37;
   }
   .read .doc {
     padding: 34px 0 45vh;
@@ -238,6 +294,58 @@
     padding: 0;
     background: none;
     color: var(--syn-text);
+  }
+  /* Scopes syntect (ClassStyle::Spaced) : chaque atome du scope devient une
+     classe — `keyword.control.rust` donne class="keyword control rust", donc
+     on cible les racines communes. Règles génériques d'abord : la chaîne
+     l'emporte sur la ponctuation à spécificité égale. */
+  .doc :global(pre code .punctuation) {
+    color: var(--code-comment);
+  }
+  .doc :global(pre code .comment) {
+    color: var(--code-comment);
+    font-style: italic;
+  }
+  .doc :global(pre code .string),
+  .doc :global(pre code .constant.character) {
+    color: var(--code-string);
+  }
+  .doc :global(pre code .keyword),
+  .doc :global(pre code .storage),
+  .doc :global(pre code .variable.language),
+  .doc :global(pre code .entity.name.tag) {
+    color: var(--code-keyword);
+  }
+  .doc :global(pre code .constant.numeric),
+  .doc :global(pre code .constant.language),
+  .doc :global(pre code .support.constant),
+  .doc :global(pre code .entity.other.attribute-name) {
+    color: var(--code-number);
+  }
+  .doc :global(pre code .entity.name.function),
+  .doc :global(pre code .support.function),
+  .doc :global(pre code .support.macro) {
+    color: var(--code-ident);
+  }
+  .doc :global(pre code .entity.name.type),
+  .doc :global(pre code .support.type),
+  .doc :global(pre code .support.class) {
+    color: var(--code-type);
+  }
+  .doc :global(pre code .markup.heading) {
+    color: var(--code-keyword);
+  }
+  .doc :global(pre code .markup.bold) {
+    font-weight: 650;
+  }
+  .doc :global(pre code .markup.italic) {
+    font-style: italic;
+  }
+  .doc :global(pre code .markup.underline.link) {
+    color: var(--code-keyword);
+  }
+  .doc :global(pre code .invalid) {
+    color: var(--code-invalid);
   }
   .doc :global(table) {
     width: 100%;

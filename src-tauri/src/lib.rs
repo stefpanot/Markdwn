@@ -120,24 +120,30 @@ pub struct ResolvedLink {
     is_markdown: bool,
 }
 
-/// Résout un lien relatif d'un document Markdown vers un chemin absolu.
+/// Cœur partagé de la résolution : un href/src relatif au document `from`
+/// devient un chemin absolu, percent-décodé et normalisé.
 ///
 /// La normalisation est LEXICALE, pas via `canonicalize` : celui-ci exige que
 /// la cible existe et renvoie des chemins préfixés `\\?\` sous Windows, ce
 /// qu'on ne veut ni afficher ni comparer.
-#[tauri::command]
-fn resolve_link(from: String, href: String) -> Result<ResolvedLink, String> {
-    let base = Path::new(&from)
+fn resolve_relative(from: &str, href: &str) -> Result<PathBuf, String> {
+    let base = Path::new(from)
         .parent()
         .ok_or_else(|| format!("document sans dossier parent : {from}"))?;
 
-    let decoded = percent_encoding::percent_decode_str(&href)
+    let decoded = percent_encoding::percent_decode_str(href)
         .decode_utf8()
         .map_err(|e| format!("lien mal encodé : {e}"))?;
 
     // Les séparateurs Markdown sont des `/`, y compris sous Windows.
     let relative = decoded.replace('/', std::path::MAIN_SEPARATOR_STR);
-    let mut resolved = normalise(&base.join(&relative));
+    Ok(normalise(&base.join(&relative)))
+}
+
+/// Résout un lien relatif d'un document Markdown vers un chemin absolu.
+#[tauri::command]
+fn resolve_link(from: String, href: String) -> Result<ResolvedLink, String> {
+    let mut resolved = resolve_relative(&from, &href)?;
 
     // Beaucoup de wikis lient sans extension : `./local-setup` -> `local-setup.md`.
     if !resolved.exists() && resolved.extension().is_none() {
@@ -152,6 +158,50 @@ fn resolve_link(from: String, href: String) -> Result<ResolvedLink, String> {
         is_markdown: is_markdown(&resolved),
         path: resolved.to_string_lossy().into_owned(),
     })
+}
+
+/// Une URL avec scheme (`https:`, `data:`, `asset:`…) ne doit pas être
+/// réécrite. Piège : `C:\…` ressemble à un scheme d'une lettre — c'est un
+/// lecteur Windows, donc un chemin absolu qu'on garde tel quel.
+fn has_url_scheme(s: &str) -> bool {
+    let Some(colon) = s.find(':') else {
+        return false;
+    };
+    if colon == 1 && s.as_bytes()[0].is_ascii_alphabetic() {
+        return false;
+    }
+    let scheme = &s[..colon];
+    !scheme.is_empty()
+        && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+}
+
+/// Résout le `src` d'une image du document `from` vers un chemin absolu, que
+/// le front charge ensuite via le protocole `asset:` de Tauri (`convertFileSrc`).
+///
+/// Renvoie `None` quand il ne faut PAS toucher au src : URL distante, data URI,
+/// src vide. Le front peut donc appeler cette commande sur chaque image sans
+/// filtrer lui-même.
+#[tauri::command]
+fn resolve_asset(from: String, src: String) -> Result<Option<String>, String> {
+    let src = src.trim();
+    if src.is_empty() || has_url_scheme(src) {
+        return Ok(None);
+    }
+    // Convention des éditeurs (et de GitHub) : un src « /images/x.png » est
+    // relatif au document, pas à la racine du disque. Sans ce retrait, le
+    // join produirait un chemin ancré à la racine du lecteur courant.
+    // Exception : un chemin UNC Windows (« \\serveur\partage ») garde ses deux
+    // séparateurs initiaux, il EST absolu.
+    let src = if let Some(unc) = src.strip_prefix("\\\\") {
+        format!("\\\\{}", unc.trim_start_matches('\\'))
+    } else {
+        src.trim_start_matches(['/', '\\']).to_string()
+    };
+    let resolved = resolve_relative(&from, &src)?;
+    Ok(Some(resolved.to_string_lossy().into_owned()))
 }
 
 fn normalise(p: &Path) -> PathBuf {
@@ -246,6 +296,7 @@ pub fn run() {
             list_dir,
             list_markdown_tree,
             resolve_link,
+            resolve_asset,
             load_config,
             save_config,
             app_version
@@ -307,6 +358,53 @@ mod tests {
         let r = resolve_link(from, "../absent.md".into()).unwrap();
         assert!(!r.exists);
         assert!(r.path.ends_with("absent.md"));
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn detects_url_schemes_without_confusing_windows_drives() {
+        assert!(has_url_scheme("https://exemple.test/x.png"));
+        assert!(has_url_scheme("data:image/png;base64,AAAA"));
+        assert!(has_url_scheme("asset://localhost/x"));
+        assert!(!has_url_scheme("images/x.png"));
+        assert!(!has_url_scheme("../x.png"));
+        assert!(!has_url_scheme(r"C:\images\x.png"));
+        assert!(!has_url_scheme("x.png"));
+    }
+
+    #[test]
+    fn resolves_relative_image_sources() {
+        let root = std::env::temp_dir().join(format!("mde-asset-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::write(root.join("docs/page.md"), "p").unwrap();
+        let from = root.join("docs/page.md").to_string_lossy().into_owned();
+
+        // image à côté du document
+        let r = resolve_asset(from.clone(), "logo.png".into()).unwrap().unwrap();
+        assert_eq!(PathBuf::from(&r), root.join("docs/logo.png"));
+
+        // remontée + percent-encodage
+        let r = resolve_asset(from.clone(), "../mon%20logo.png".into())
+            .unwrap()
+            .unwrap();
+        assert_eq!(PathBuf::from(&r), root.join("mon logo.png"));
+
+        // src ancré « /… » : relatif au document, pas au lecteur
+        let r = resolve_asset(from.clone(), "/logo.png".into()).unwrap().unwrap();
+        assert_eq!(PathBuf::from(&r), root.join("docs/logo.png"));
+
+        // URL distante, data URI et src vide : ne pas toucher
+        assert_eq!(
+            resolve_asset(from.clone(), "https://exemple.test/x.png".into()).unwrap(),
+            None
+        );
+        assert_eq!(
+            resolve_asset(from.clone(), "data:image/png;base64,AAAA".into()).unwrap(),
+            None
+        );
+        assert_eq!(resolve_asset(from, "  ".into()).unwrap(), None);
 
         std::fs::remove_dir_all(&root).unwrap();
     }

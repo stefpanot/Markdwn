@@ -5,6 +5,14 @@ on:
     tags: ['v*']
   # A manual run builds downloadable artifacts without publishing a release.
   workflow_dispatch:
+  # prepare-release.yml calls us right after pushing the release tag. Needed
+  # because a tag pushed by GITHUB_TOKEN does not trigger push workflows.
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag vX.Y.Z poussé par le workflow de préparation'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,6 +27,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      tag: ${{ steps.meta.outputs.tag }}
+      publish: ${{ steps.meta.outputs.publish }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,15 +38,27 @@ jobs:
           node-version: '24'
       - id: version
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
           EVENT: ${{ github.event_name }}
         run: |
-          if [ "$EVENT" = push ]; then
+          if [ "$EVENT" = push ] || [ "$EVENT" = workflow_call ]; then
             node scripts/version.mjs tag "$TAG"
           else
             node scripts/version.mjs check
           fi
       - run: npm run test:version
+      - id: meta
+        env:
+          # Sur un push de tag, inputs.tag est vide : le tag est le ref.
+          TAG: ${{ inputs.tag || github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          publish=false
+          if [ "$EVENT" = push ] || [ "$EVENT" = workflow_call ]; then
+            publish=true
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
   build:
     needs: version
@@ -62,6 +84,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Appelé par prepare-release.yml, le ref par défaut serait main ;
+          # on build exactement le contenu tagué.
+          ref: ${{ needs.version.outputs.tag || github.ref }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
@@ -106,7 +131,9 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
 
   publish:
-    if: github.event_name == 'push'
+    # Tag poussé à la main ou appelé par prepare-release.yml : on publie.
+    # workflow_dispatch manuel : artefacts seulement, pas de release.
+    if: needs.version.outputs.publish == 'true'
     needs: [version, build]
     runs-on: ubuntu-22.04
     permissions:
@@ -121,7 +148,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.version.outputs.tag }}
           PRERELEASE: ${{ needs.version.outputs.prerelease }}
         shell: bash
         run: |

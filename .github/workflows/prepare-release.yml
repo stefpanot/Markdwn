@@ -1,0 +1,66 @@
+name: Prepare release
+
+# Publier une version en un clic : bump de version (source unique Cargo.toml),
+# commit « chore: release », tag annoté, push — puis appel de release.yml pour
+# builder les installeurs et publier la release. Voir RELEASING.md.
+#
+# Pourquoi l'appel direct à release.yml : un tag poussé avec GITHUB_TOKEN ne
+# déclenche PAS les workflows `on: push` (limitation GitHub). Le tag est quand
+# même poussé pour marquer le commit de release dans l'historique.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version à publier (X.Y.Z ou X.Y.Z-beta.N)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    # Le job pousse HEAD sur main : lancé depuis une autre branche, il y
+    # pousserait son contenu. On refuse donc tout lancement hors main.
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Set version, commit, tag
+        id: release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          npm run version:set -- "$VERSION"
+          npm run test:version
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Version déjà à jour : rien à committer, on tague simplement.
+          if ! git diff --quiet; then
+            git add src-tauri/Cargo.toml src-tauri/Cargo.lock
+            git commit -m "chore: release v$VERSION"
+          fi
+          git tag -a "v$VERSION" -m "Markdwn v$VERSION"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Push release commit and tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git push origin HEAD:main
+          git push origin "v$VERSION"
+
+  # Build des 4 cibles et publication de la release, comme pour un tag poussé
+  # à la main. Le workflow réutilisable hérite des permissions du job appelant.
+  release:
+    needs: bump
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.bump.outputs.tag }}

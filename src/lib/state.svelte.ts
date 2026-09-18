@@ -97,6 +97,7 @@ class AppState {
   hydrated = $state(false);
   configPath = $state("");
   settingsOpen = $state(false);
+  paletteOpen = $state(false);
   /** Vide hors Tauri ; sinon la version résolue depuis Cargo.toml. */
   version = $state("");
 
@@ -154,11 +155,13 @@ class AppState {
     this.activeIndex = this.docs.length - 1;
   }
 
-  open(doc: { path: string; name: string; content: string }) {
-    const existing = this.docs.findIndex((d) => d.path !== "" && d.path === doc.path);
-    if (existing >= 0) {
-      this.activeIndex = existing;
-      return;
+  open(doc: { path: string; name: string; content: string }, opts: { forceNew?: boolean } = {}) {
+    if (!opts.forceNew) {
+      const existing = this.docs.findIndex((d) => d.path !== "" && d.path === doc.path);
+      if (existing >= 0) {
+        this.activeIndex = existing;
+        return;
+      }
     }
     this.docs.push({ ...makeDoc(doc.content), path: doc.path, name: doc.name });
     this.activeIndex = this.docs.length - 1;
