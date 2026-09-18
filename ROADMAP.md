@@ -76,7 +76,7 @@ si l'usage le confirme : la liste complète scrollable reste honnête.
 
 ## Inspirations — analyse d'un éditeur de référence
 
-Analyse (sept. 2026) de captures de Markdown Monster : garder l'esprit, pas la
+Analyse (sept. 2026) de captures d'un éditeur de Markdown : garder l'esprit, pas la
 copie. Ce qui suit trace les choix pour ne pas les re-débattre.
 
 **Retenu** (intégré aux pistes ci-dessus) :
