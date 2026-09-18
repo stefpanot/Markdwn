@@ -26,6 +26,10 @@
       history(),
       drawSelection(),
       highlightActiveLine(),
+      // La keymap par défaut de CodeMirror lie Ctrl+K à « supprimer jusqu'à la
+      // fin de ligne » (héritage Emacs) : conflit avec notre palette (Ctrl+K).
+      // On l'avale ici, le handler fenêtre ouvre la palette.
+      keymap.of([{ key: "Mod-k", run: () => true }]),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       editorTheme,
@@ -122,6 +126,37 @@
     }
     view.dispatch({ changes });
     view.focus();
+  }
+
+  /* Positions ci-dessous en unités UTF-16 (celles de JS et de CodeMirror),
+     fournies telles quelles par le moteur de recherche Rust. */
+
+  /** Sélectionne un intervalle et le fait défiler — navigation des occurrences.
+      Sans focus : le panneau de recherche garde la main, comme chez VS Code. */
+  export function selectRange(from: number, to: number) {
+    if (!view) return;
+    const len = view.state.doc.length;
+    const clamp = (p: number) => Math.min(Math.max(p, 0), len);
+    const f = clamp(from);
+    const t = clamp(to);
+    view.dispatch({
+      selection: { anchor: f, head: t },
+      effects: EditorView.scrollIntoView(f, { y: "center" }),
+    });
+  }
+
+  /** Remplace un intervalle — occurrence courante. Ne focalise pas non plus. */
+  export function replaceRange(from: number, to: number, insert: string) {
+    if (!view) return;
+    view.dispatch({ changes: { from, to, insert } });
+  }
+
+  /** Remplace tout le contenu — « remplacer tout ». */
+  export function setContent(content: string) {
+    if (!view) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: content },
+    });
   }
 </script>
 

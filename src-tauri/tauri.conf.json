@@ -32,6 +32,20 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Document Markdown",
+        "description": "Document Markdown",
+        "mimeType": "text/markdown",
+        "role": "Editor"
+      }
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "both"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
