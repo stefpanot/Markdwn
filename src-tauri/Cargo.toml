@@ -4,7 +4,7 @@ name = "markdwn"
 # `tauri.conf.json` n'a pas de champ `version` : Tauri retombe sur celle-ci.
 # `package.json` n'en a pas non plus (paquet privé). `dev.ps1 version` lit,
 # écrit et vérifie qu'aucun duplicata n'est réapparu.
-version = "0.1.0"
+version = "0.1.0-beta.1"
 description = "Éditeur et lecteur Markdown natif"
 authors = ["Stéphane Panot"]
 edition = "2021"
