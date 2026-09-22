@@ -111,6 +111,21 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: release-${{ matrix.target }}
+      - name: Rename macOS updater bundle per arch
+        # Les deux jobs macOS produisent chacun « Markdwn.app.tar.gz » : à
+        # l'assemblage des artefacts, le second écrase le premier et l'une des
+        # deux arches disparaît (vu sur la beta.3). On injecte l'arch dans le
+        # nom avant l'upload, conforme aux motifs de updater-manifest.py.
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          d="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          arch=$([ "${{ matrix.target }}" = x86_64-apple-darwin ] && echo x64 || echo aarch64)
+          mv "$d/Markdwn.app.tar.gz" "$d/Markdwn_${TAG}_${arch}.app.tar.gz"
+          mv "$d/Markdwn.app.tar.gz.sig" "$d/Markdwn_${TAG}_${arch}.app.tar.gz.sig"
       - name: Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -197,6 +212,14 @@ jobs:
           gh release create "$TAG" "${files[@]}" SHA256SUMS.txt \
             --verify-tag --draft --title "Markdwn $TAG" --generate-notes "${flags[@]}"
           gh release edit "$TAG" --draft=false "${flags[@]}"
+          # Garde-fou : gh a déjà laissé tomber un asset en silence (dmg
+          # aarch64 de la beta.3). On vérifie que tout est arrivé.
+          have=$(gh release view "$TAG" --json assets --jq '.assets | length')
+          want=$(find assets -type f -printf '.' | wc -c)
+          if [ "$have" -lt "$want" ]; then
+            echo "::error::$want fichiers attendus, $have uploadés sur la release."
+            exit 1
+          fi
 
       # Auto-update : le endpoint de tauri.conf.json sert le latest.json de la
       # dernière release stable. Chaque plateforme pointe vers son installeur
