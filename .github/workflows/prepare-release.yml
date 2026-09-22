@@ -64,3 +64,8 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.bump.outputs.tag }}
+    # Indispensable : un workflow réutilisable reçoit un contexte `secrets`
+    # VIDE par défaut. Sans cette ligne, la signature des installeurs ne
+    # reçoit jamais TAURI_SIGNING_PRIVATE_KEY et le build échoue au garde
+    # (vu le 2026-09-22 : 4 cibles en échec sur la beta.3).
+    secrets: inherit
