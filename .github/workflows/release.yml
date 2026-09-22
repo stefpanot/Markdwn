@@ -111,21 +111,6 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: release-${{ matrix.target }}
-      - name: Rename macOS updater bundle per arch
-        # Les deux jobs macOS produisent chacun « Markdwn.app.tar.gz » : à
-        # l'assemblage des artefacts, le second écrase le premier et l'une des
-        # deux arches disparaît (vu sur la beta.3). On injecte l'arch dans le
-        # nom avant l'upload, conforme aux motifs de updater-manifest.py.
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          TAG: ${{ needs.version.outputs.tag }}
-        run: |
-          set -euo pipefail
-          d="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          arch=$([ "${{ matrix.target }}" = x86_64-apple-darwin ] && echo x64 || echo aarch64)
-          mv "$d/Markdwn.app.tar.gz" "$d/Markdwn_${TAG}_${arch}.app.tar.gz"
-          mv "$d/Markdwn.app.tar.gz.sig" "$d/Markdwn_${TAG}_${arch}.app.tar.gz.sig"
       - name: Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -157,6 +142,22 @@ jobs:
             echo "::error::TAURI_SIGNING_PRIVATE_KEY manquant : les installeurs ne seraient pas signés."
             exit 1
           fi
+      - name: Rename macOS updater bundle per arch
+        # Les deux jobs macOS produisent chacun « Markdwn.app.tar.gz » : à
+        # l'assemblage des artefacts, le second écrase le premier et l'une des
+        # deux arches disparaît (vu sur la beta.3). On injecte l'arch dans le
+        # nom APRÈS le build et avant l'upload, conforme aux motifs de
+        # updater-manifest.py. NB : ce step doit rester après « Build installers ».
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          d="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          arch=$([ "${{ matrix.target }}" = x86_64-apple-darwin ] && echo x64 || echo aarch64)
+          mv "$d/Markdwn.app.tar.gz" "$d/Markdwn_${TAG}_${arch}.app.tar.gz"
+          mv "$d/Markdwn.app.tar.gz.sig" "$d/Markdwn_${TAG}_${arch}.app.tar.gz.sig"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: installers-${{ matrix.target }}
