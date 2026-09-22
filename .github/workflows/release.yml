@@ -199,15 +199,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir assets
+          # Le dépôt contient un dossier `assets/` (checkout) : utiliser un
+          # nom dédié, sinon `mkdir` échoue et `find assets` y inclurait
+          # les fichiers du dépôt (vu le 2026-09-22 sur la beta.4).
+          mkdir release-assets
           while IFS= read -r -d '' file; do
             name=$(basename "$file")
-            test ! -e "assets/$name"
-            cp "$file" "assets/$name"
+            test ! -e "release-assets/$name"
+            cp "$file" "release-assets/$name"
           done < <(find installers -type f -print0)
-          mapfile -d '' files < <(find assets -type f -print0)
+          mapfile -d '' files < <(find release-assets -type f -print0)
           test "${#files[@]}" -gt 0
-          (cd assets && sha256sum *) > SHA256SUMS.txt
+          (cd release-assets && sha256sum *) > SHA256SUMS.txt
           flags=()
           if [ "$PRERELEASE" = true ]; then flags+=(--prerelease --latest=false); fi
           gh release create "$TAG" "${files[@]}" SHA256SUMS.txt \
@@ -216,7 +219,7 @@ jobs:
           # Garde-fou : gh a déjà laissé tomber un asset en silence (dmg
           # aarch64 de la beta.3). On vérifie que tout est arrivé.
           have=$(gh release view "$TAG" --json assets --jq '.assets | length')
-          want=$(find assets -type f -printf '.' | wc -c)
+          want=$(find release-assets -type f -printf '.' | wc -c)
           if [ "$have" -lt "$want" ]; then
             echo "::error::$want fichiers attendus, $have uploadés sur la release."
             exit 1
@@ -235,5 +238,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/updater-manifest.py "$TAG" assets
+          python3 scripts/updater-manifest.py "$TAG" release-assets
           gh release upload "$TAG" latest.json --clobber
