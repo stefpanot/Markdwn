@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
   import { listDir, type DirEntryInfo } from "$lib/api";
-  import { app } from "$lib/state.svelte";
+  import { app, isPathUnder } from "$lib/state.svelte";
   import Self from "./TreeNode.svelte";
 
   interface Props {
@@ -11,11 +11,38 @@
   }
   let { entry, depth, onOpen }: Props = $props();
 
+  let rowEl: HTMLButtonElement;
   let expanded = $state(false);
   let children = $state<DirEntryInfo[]>([]);
   let loaded = false;
 
   const isActive = $derived(!!app.active && app.active.path === entry.path);
+
+  /* Révélation demandée depuis le fil d'Ariane : chaque dossier sur le chemin
+     s'ouvre et charge ses enfants ; le nœud ciblé se défile au centre. Les
+     enfants chargés en retard montent chacun leur tour et poursuivent la
+     chaîne : c'est l'effet du niveau le plus profond qui scrolle. */
+  $effect(() => {
+    const target = app.revealPath;
+    const tick = app.revealTick;
+    if (!tick || !target) return;
+    if (entry.is_dir && isPathUnder(target, entry.path)) {
+      expanded = true;
+      if (!loaded) {
+        listDir(entry.path)
+          .then((c) => {
+            children = c;
+            loaded = true;
+          })
+          .catch(() => {
+            children = [];
+          });
+      }
+    }
+    if (entry.path === target) {
+      rowEl?.scrollIntoView({ block: "center" });
+    }
+  });
 
   async function toggle() {
     if (!entry.is_dir) {
@@ -40,6 +67,7 @@
   style:padding-left="{8 + depth * 16}px"
   onclick={toggle}
   title={entry.path}
+  bind:this={rowEl}
 >
   {#if entry.is_dir}
     <span class="twisty" class:open={expanded}>

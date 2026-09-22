@@ -154,6 +154,56 @@ fn highlight_fenced(syntax: &SyntaxReference, token: &str, code: &str) -> String
     )
 }
 
+/// Découpe un Text sur les paires `==…==` : segments alternativement
+/// ordinaires et surlignés. Règles volontairement strictes, pour ne pas
+/// surligner un « a == b » ordinaire : un délimiteur ouvre seulement suivi
+/// d'un non-espace, ferme seulement précédé d'un non-espace, et un ouvreur
+/// sans fermeur redevient littéral. Les paires qui traverseraient un
+/// formatage inline (`==a *b*==`) ne sont pas détectées : pulldown découpe
+/// alors le texte en plusieurs événements. Le code inline est hors scope,
+/// côté appelant, par construction.
+fn split_mark(t: &str) -> Vec<(&str, bool)> {
+    let is_ws = |c: Option<char>| c.is_some_and(|c| c.is_whitespace());
+
+    let mut idx = Vec::new();
+    let mut from = 0;
+    while let Some(rel) = t[from..].find("==") {
+        let i = from + rel;
+        from = i + 2;
+        idx.push(i);
+    }
+    // « a == b » : espaces des deux côtés, jamais un délimiteur.
+    let valid: Vec<bool> = idx
+        .iter()
+        .map(|&i| !(is_ws(t[..i].chars().last()) && is_ws(t[i + 2..].chars().next())))
+        .collect();
+
+    let mut out: Vec<(&str, bool)> = Vec::new();
+    let mut seg_start = 0usize;
+    let mut k = 0usize;
+    while k < idx.len() {
+        if !valid[k] {
+            k += 1;
+            continue;
+        }
+        // Fermeur valide suivant : sans lui, l'ouvreur reste littéral.
+        let mut j = k + 1;
+        while j < idx.len() && !valid[j] {
+            j += 1;
+        }
+        if j >= idx.len() {
+            k += 1;
+            continue;
+        }
+        out.push((&t[seg_start..idx[k]], false));
+        out.push((&t[idx[k] + 2..idx[j]], true));
+        seg_start = idx[j] + 2;
+        k = j + 1;
+    }
+    out.push((&t[seg_start..], false));
+    out
+}
+
 pub fn render(source: &str) -> Rendered {
     let starts = line_starts(source);
     let mut parser = Parser::new_ext(source, options()).into_offset_iter();
@@ -229,7 +279,41 @@ pub fn render(source: &str) -> Rendered {
                     }
                 }
             }
-            Event::Text(t) | Event::Code(t) => {
+            Event::Text(t) => {
+                if t.contains("==") {
+                    // `==surligné==` n'existe pas dans CommonMark : on l'émet
+                    // comme HTML inline, dont le rendu est assuré par <mark>.
+                    // Comptage et sommaire portent sur le texte débarrassé des
+                    // délimiteurs de paires valides.
+                    let segs = split_mark(t);
+                    let clean: String = segs.iter().map(|(s, _)| *s).collect();
+                    words += clean.split_whitespace().count();
+                    if let Some((_, _, text)) = current_heading.as_mut() {
+                        text.push_str(&clean);
+                    }
+                    for (seg, marked) in segs {
+                        if seg.is_empty() {
+                            continue;
+                        }
+                        if marked {
+                            events.push(Event::Html("<mark>".into()));
+                        }
+                        // Owned : un segment emprunté à `event` ne survivrait
+                        // pas à l'itération (events vit plus longtemps).
+                        events.push(Event::Text(seg.to_string().into()));
+                        if marked {
+                            events.push(Event::Html("</mark>".into()));
+                        }
+                    }
+                    // Déjà poussés pièce par pièce : le push final ne s'applique pas.
+                    continue;
+                }
+                words += t.split_whitespace().count();
+                if let Some((_, _, text)) = current_heading.as_mut() {
+                    text.push_str(t);
+                }
+            }
+            Event::Code(t) => {
                 words += t.split_whitespace().count();
                 if let Some((_, _, text)) = current_heading.as_mut() {
                     text.push_str(t);
@@ -319,6 +403,34 @@ mod tests {
         assert_eq!(r.headings[1].slug, "notes-2");
         assert!(r.html.contains("id=\"notes\""));
         assert!(r.html.contains("id=\"notes-2\""));
+    }
+
+    #[test]
+    fn mark_pairs_become_highlight_html() {
+        let r = render("Un passage ==très important== ici.\n");
+        assert!(r.html.contains("<mark>très important</mark>"));
+        // Le texte reste compté dans les mots (délimiteurs exclus).
+        assert_eq!(r.words, 5);
+    }
+
+    #[test]
+    fn mark_leaves_heading_text_clean() {
+        let r = render("## Réunion ==du lundi==\n");
+        assert_eq!(r.headings[0].text, "Réunion du lundi");
+        assert!(r.html.contains("<mark>du lundi</mark>"));
+    }
+
+    #[test]
+    fn unpaired_mark_stays_literal() {
+        let r = render("Un ==seul délimiteur.\n");
+        assert!(!r.html.contains("<mark>"));
+        assert!(r.html.contains("==seul"));
+    }
+
+    #[test]
+    fn code_inline_is_never_marked() {
+        let r = render("`==pas de surligné==`\n");
+        assert!(!r.html.contains("<mark>"));
     }
 
     #[test]

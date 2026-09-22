@@ -38,6 +38,8 @@ pub struct Config {
     /// Dernier dossier ouvert, réouvert au démarrage si `restore_last_folder`.
     pub last_folder: String,
     pub restore_last_folder: bool,
+    /// Vérifier silencieusement les mises à jour au lancement.
+    pub auto_update: bool,
 }
 
 impl Default for Config {
@@ -52,6 +54,7 @@ impl Default for Config {
             sync_scroll: true,
             last_folder: String::new(),
             restore_last_folder: true,
+            auto_update: true,
         }
     }
 }

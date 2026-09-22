@@ -50,6 +50,12 @@
   tabindex="-1"
 >
   {#each items as item, i (i)}
+    {#if item.group && item.group !== items[i - 1]?.group}
+      {#if i > 0}
+        <div class="sep"></div>
+      {/if}
+      <div class="group" role="presentation">{item.group}</div>
+    {/if}
     {#if item.separatorBefore}
       <div class="sep"></div>
     {/if}
@@ -122,5 +128,14 @@
     height: 1px;
     margin: 4px 6px;
     background: var(--border-strong);
+  }
+  .group {
+    padding: 7px 11px 3px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    user-select: none;
   }
 </style>

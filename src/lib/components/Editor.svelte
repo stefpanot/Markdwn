@@ -1,7 +1,15 @@
 <script lang="ts">
   import { EditorState } from "@codemirror/state";
   import { EditorView, keymap, highlightActiveLine, drawSelection } from "@codemirror/view";
-  import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+  import {
+    history,
+    defaultKeymap,
+    historyKeymap,
+    indentLess,
+    indentWithTab,
+    undo as cmUndo,
+    redo as cmRedo,
+  } from "@codemirror/commands";
   import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
   import { languages } from "@codemirror/language-data";
   import { editorTheme, highlighting } from "$lib/editor-theme";
@@ -30,6 +38,11 @@
       // fin de ligne » (héritage Emacs) : conflit avec notre palette (Ctrl+K).
       // On l'avale ici, le handler fenêtre ouvre la palette.
       keymap.of([{ key: "Mod-k", run: () => true }]),
+      // Tab/Maj+Tab AVANT le keymap par défaut : celui-ci ne lie pas Tab, et
+      // le comportement natif (sortir le focus de l'éditeur) casse l'écriture.
+      // Tab indente la ligne ou la sélection — c'est ce qui décale une puce
+      // markdown ; Maj+Tab désindente.
+      keymap.of([indentWithTab, { key: "Shift-Tab", run: indentLess }]),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       editorTheme,
@@ -126,6 +139,51 @@
     }
     view.dispatch({ changes });
     view.focus();
+  }
+
+  /** Texte de la sélection courante. */
+  export function selectedText(): string {
+    if (!view) return "";
+    const { from, to } = view.state.selection.main;
+    return view.state.sliceDoc(from, to);
+  }
+
+  /** Remplace la sélection courante (couper, coller). */
+  export function replaceSelection(text: string) {
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+    });
+    view.focus();
+  }
+
+  /** Insère un bloc de code clôturé autour de la sélection, qui prend sa
+      propre ligne. Le curseur se pose après la clôture ouvrante : on y tape
+      le langage (ts, rust…) qui déclenche la coloration. */
+  export function codeBlock() {
+    if (!view) return;
+    const { state } = view;
+    const { from, to } = state.selection.main;
+    const first = state.doc.lineAt(from);
+    const last = state.doc.lineAt(to);
+    view.dispatch({
+      changes: [
+        { from: first.from, insert: "```\n" },
+        { from: last.to, insert: "\n```" },
+      ],
+      selection: { anchor: first.from + 3 },
+    });
+    view.focus();
+  }
+
+  export function undoEdit() {
+    if (view) cmUndo(view);
+  }
+
+  export function redoEdit() {
+    if (view) cmRedo(view);
   }
 
   /* Positions ci-dessous en unités UTF-16 (celles de JS et de CodeMirror),

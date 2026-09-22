@@ -87,10 +87,12 @@ jobs:
             bundles: deb,rpm,appimage
           - os: macos-latest
             target: aarch64-apple-darwin
-            bundles: dmg
+            # « app » produit le .app.tar.gz requis par l'auto-update (dmg seul
+            # ne suffit pas) ; dmg reste l'installateur téléchargeable.
+            bundles: dmg,app
           - os: macos-latest
             target: x86_64-apple-darwin
-            bundles: dmg
+            bundles: dmg,app
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -126,8 +128,20 @@ jobs:
           TARGET: ${{ matrix.target }}
           # MSI uses numeric product versions; betas use NSIS only.
           BUNDLES: ${{ runner.os == 'Windows' && needs.version.outputs.prerelease == 'true' && 'nsis' || matrix.bundles }}
+          # Signature des installeurs pour l'auto-update (minisign). Quand les
+          # secrets sont absents (fork), le build reste possible mais non
+          # mettable à jour : la CI doit échouer tôt plutôt que de publier
+          # silencieusement sans .sig, d'où le test explicite.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
-        run: npm run tauri -- build --target "$TARGET" --bundles "$BUNDLES" -- --locked
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            npm run tauri -- build --target "$TARGET" --bundles "$BUNDLES" -- --locked
+          else
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY manquant : les installeurs ne seraient pas signés."
+            exit 1
+          fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: installers-${{ matrix.target }}
@@ -140,6 +154,8 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.sig
 
   publish:
     # Tag poussé à la main ou appelé par prepare-release.yml : on publie.
@@ -178,3 +194,19 @@ jobs:
           gh release create "$TAG" "${files[@]}" SHA256SUMS.txt \
             --verify-tag --draft --title "Markdwn $TAG" --generate-notes "${flags[@]}"
           gh release edit "$TAG" --draft=false "${flags[@]}"
+
+      # Auto-update : le endpoint de tauri.conf.json sert le latest.json de la
+      # dernière release stable. Chaque plateforme pointe vers son installeur
+      # signé (signature minisign = contenu du .sig généré au build). Les
+      # releases « prerelease » le reçoivent aussi, mais /releases/latest/ ne
+      # les résout jamais : elles restent hors auto-update par construction.
+      - name: latest.json for the updater
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/updater-manifest.py "$TAG" assets
+          gh release upload "$TAG" latest.json --clobber

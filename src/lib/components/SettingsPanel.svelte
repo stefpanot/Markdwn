@@ -117,6 +117,17 @@
           </span>
         </label>
       </section>
+
+      <section>
+        <h3>Mises à jour</h3>
+        <label class="check">
+          <input type="checkbox" bind:checked={app.autoUpdate} />
+          <span class="lab">
+            Vérifier les mises à jour au lancement
+            <span class="sub">depuis les releases GitHub, installeur signé vérifié</span>
+          </span>
+        </label>
+      </section>
     </div>
 
     <footer>

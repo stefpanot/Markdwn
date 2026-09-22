@@ -3,6 +3,21 @@
 La version a une **source unique** : `src-tauri/Cargo.toml` (gardée par
 `scripts/version.mjs`, testée par `npm run test:version` et par la CI).
 
+## Prérequis : les secrets de signature (une seule fois)
+
+L'auto-update exige des installeurs signés (minisign). Deux secrets doivent
+exister sur le dépôt (`Settings → Secrets and variables → Actions`) :
+
+- `TAURI_SIGNING_PRIVATE_KEY` — contenu de la clé privée
+  (`npm run tauri -- signer generate --ci --password … --write-keys …`) ;
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — son mot de passe.
+
+La clé publique correspondante vit dans `tauri.conf.json` (non secrète). Sans
+ces secrets, le build de release échoue volontairement : mieux vaut un échec
+explicite que des installeurs non signés publiés en silence. Garder le fichier
+`.key` en lieu sûr : sa perte rend les futures mises à jour impossibles à
+signer.
+
 ## Voie normale : le workflow « Prepare release » (un clic)
 
 1. Merger la PR du travail à publier sur `main`.
@@ -14,7 +29,8 @@ La version a une **source unique** : `src-tauri/Cargo.toml` (gardée par
      `chore: release vX.Y.Z` sur `main`, tag annoté `vX.Y.Z`, push ;
    - appelle `release.yml` qui vérifie tag ↔ version, lance les tests, build
      les installeurs des 4 cibles (Windows NSIS + MSI, Linux deb/rpm/AppImage,
-     macOS arm64 + Intel) et publie la release GitHub avec `SHA256SUMS.txt`.
+     macOS arm64 + Intel), les signe, et publie la release GitHub avec
+     `SHA256SUMS.txt` et `latest.json` (point d'entrée de l'auto-update).
 4. C'est le **format de la version** qui décide du canal, pas la branche :
    `0.2.0` → release stable ; `0.2.0-beta.1` → pre-release, non « latest »,
    sans MSI (versions numériques seulement).
@@ -65,3 +81,8 @@ git push origin main v0.2.0  # le push du tag déclenche release.yml
   push du bot, le faire en voie manuelle ou ajuster la protection.
 - macOS : signature ad-hoc, sans notarisation — Gatekeeper affichera un
   avertissement, comme SmartScreen sous Windows.
+- Auto-update : l'endpoint (`releases/latest/download/latest.json`) ne
+  résout jamais les *Pre-release*. Tant qu'aucune release stable n'existe,
+  les beta ne se mettent pas à jour toutes seules — c'est voulu, le canal
+  stable est le seul servi. NSIS se met à jour ; le MSI, lui, ne le peut pas
+  (le plugin l'ignore).

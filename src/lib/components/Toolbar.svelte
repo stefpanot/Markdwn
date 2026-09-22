@@ -7,7 +7,18 @@
     onOpenFolder: () => void;
     onOpenFile: () => void;
     onSave: () => void;
-    onFormat: (kind: "bold" | "italic" | "code" | "link" | "list" | "quote") => void;
+    onFormat: (
+      kind:
+        | "bold"
+        | "italic"
+        | "code"
+        | "codeblock"
+        | "strike"
+        | "mark"
+        | "link"
+        | "list"
+        | "quote",
+    ) => void;
   }
   let { onOpenFolder, onOpenFile, onSave, onFormat }: Props = $props();
 </script>
@@ -34,8 +45,17 @@
   <button class="icon-btn" onclick={() => onFormat("link")} title="Lien">
     <Icon name="link" size={16} />
   </button>
-  <button class="icon-btn" onclick={() => onFormat("code")} title="Code">
+  <button class="icon-btn" onclick={() => onFormat("code")} title="Code inline">
     <Icon name="code" size={16} />
+  </button>
+  <button class="icon-btn" onclick={() => onFormat("codeblock")} title="Bloc de code — ```langage">
+    <Icon name="code-block" size={16} width={1.4} />
+  </button>
+  <button class="icon-btn" onclick={() => onFormat("strike")} title="Barré">
+    <Icon name="strike" size={16} width={1.4} />
+  </button>
+  <button class="icon-btn" onclick={() => onFormat("mark")} title="Surligner">
+    <Icon name="mark" size={16} width={1.4} />
   </button>
   <button class="icon-btn" onclick={() => onFormat("list")} title="Liste">
     <Icon name="list" size={16} />

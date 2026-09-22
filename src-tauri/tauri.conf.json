@@ -31,7 +31,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "dmg", "appimage"],
+    "createUpdaterArtifacts": true,
     "fileAssociations": [
       {
         "ext": ["md", "markdown"],
@@ -53,5 +54,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/stefpanot/Markdwn/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYzMkRGNjcwMkU5ODUzRDgKUldUWVU1Z3VjUFl0ODViNHBzdnlmaHZFZGdCdHA3bEp5N2ROZU84WUUwekdVaCtxaDhKU2s0cW8K"
+    }
   }
 }

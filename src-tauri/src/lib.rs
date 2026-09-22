@@ -347,6 +347,10 @@ pub fn run() {
         // Taille et position de la fenêtre : le plugin officiel s'en charge,
         // dans son propre fichier d'état. Inutile de le refaire dans config.json.
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Auto-update : vérifie les releases GitHub (latest.json), vérifie la
+        // signature minisign, télécharge, remplace et relance via le plugin process.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(initial_file))
         .invoke_handler(tauri::generate_handler![
             render_markdown,

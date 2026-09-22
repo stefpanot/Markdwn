@@ -252,6 +252,18 @@
     font-weight: 650;
     color: var(--fg-bright);
   }
+  .doc :global(del),
+  .doc :global(s) {
+    color: var(--fg-3);
+  }
+  /* ==surligné== : une couleur « surligneur » tirée du sable existant, pour
+     ne pas introduire d'accent tiers. */
+  .doc :global(mark) {
+    background: color-mix(in oklab, var(--code-number) 26%, transparent);
+    color: var(--fg-bright);
+    padding: 0 3px;
+    border-radius: 3px;
+  }
   .doc :global(ul),
   .doc :global(ol) {
     margin: 0 0 24px;
