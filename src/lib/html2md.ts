@@ -34,7 +34,13 @@ function inlineOf(node: Node): string {
     case "a": {
       const href = el.getAttribute("href") ?? "";
       const text = inner().trim();
-      if (!href || href.startsWith("javascript:")) return text;
+      /* Schémas dangereux : la normalisation (trim + casse) compte, car
+         «  javascript: » ou « JaVaScRiPt: » passeraient le filtre brut.
+         data: et vbscript: rejoignent javascript: (alerte CodeQL
+         « Incomplete URL scheme check »). */
+      const normalized = href.trim().toLowerCase();
+      const dangerous = ["javascript:", "data:", "vbscript:"].some((s) => normalized.startsWith(s));
+      if (!normalized || dangerous) return text;
       if (!text) return "";
       return `[${text}](${href})`;
     }
