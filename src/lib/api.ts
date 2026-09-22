@@ -55,6 +55,7 @@ export interface AppConfig {
   syncScroll: boolean;
   lastFolder: string;
   restoreLastFolder: boolean;
+  autoUpdate: boolean;
 }
 
 export interface LoadedConfig {

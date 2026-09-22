@@ -35,7 +35,9 @@
     writeDocument,
     type SearchMatch,
   } from "$lib/api";
-  import { app } from "$lib/state.svelte";
+  import { app, isPathUnder, parentDir } from "$lib/state.svelte";
+  import { htmlToMarkdown } from "$lib/html2md";
+  import { checkForUpdates } from "$lib/updater";
   import { listen } from "@tauri-apps/api/event";
   import FindPanel from "$lib/components/FindPanel.svelte";
 
@@ -66,11 +68,17 @@
             /* ignoré volontairement */
           }
         }
+        // Sans dossier ouvert, la barre latérale n'a rien à montrer : masquée
+        // par défaut au lancement. Ouvrir un dossier la réaffiche.
+        if (!app.folderPath) app.sidebarVisible = false;
       } catch {
         /* Hors Tauri (serveur Vite nu) : on reste sur les valeurs par défaut. */
       } finally {
         app.hydrated = true;
       }
+      // Vérification silencieuse des mises à jour, une fois hydraté. Rien ne
+      // s'affiche tant qu'il n'y a pas de mise à jour disponible.
+      if (app.autoUpdate) void checkForUpdates(false);
       // Fichier passé au lancement (association Windows « ouvrir avec ») :
       // ouvert une fois hydraté. L'écoute « open-file » couvre les
       // double-clics suivants, déroutés par le plugin single-instance vers
@@ -228,6 +236,26 @@
     app.folderPath = path;
   }
 
+  /** Révèle le document actif dans la barre latérale. Hors du dossier ouvert
+      (ou sans dossier ouvert) : on charge le dossier parent du fichier —
+      l'arbre ne doit pas rester déconnecté du document affiché. Dedans :
+      simple expansion et sélection. */
+  async function revealActiveInSidebar() {
+    const doc = app.active;
+    if (!doc?.path) return;
+    if (!isPathUnder(doc.path, app.folderPath)) {
+      try {
+        await refreshFolder(parentDir(doc.path));
+      } catch (e) {
+        error = String(e);
+        return;
+      }
+    }
+    app.sidebarVisible = true;
+    app.revealPath = doc.path;
+    app.revealTick += 1;
+  }
+
   async function openFolder() {
     let picked: string | string[] | null = null;
     try {
@@ -282,7 +310,10 @@
   async function save() {
     const doc = app.active;
     if (!doc) return;
-    const path = doc.path ?? (await pickSavePath(doc.name));
+    // `path` vaut "" (et non undefined) pour un document jamais enregistré :
+    // le ?? ne déclencherait jamais le dialogue, et « Enregistrer » sur un
+    // nouveau document ne ferait rien.
+    const path = doc.path || (await pickSavePath(doc.name));
     if (path) await writeTo(path);
   }
 
@@ -290,7 +321,7 @@
     const doc = app.active;
     if (!doc) return;
     // Chemin courant par défaut : permet de renommer en un clic sans naviguer.
-    const path = await pickSavePath(doc.path ?? doc.name);
+    const path = await pickSavePath(doc.path || doc.name);
     if (path) await writeTo(path);
   }
 
@@ -499,62 +530,122 @@
   }
 
   let menu = $state<{ x: number; y: number; index: number } | null>(null);
-  let appMenu = $state<{ x: number; y: number } | null>(null);
+  /* ---------- barre de menus façon Zed : logo + entrées inline ----------
+     Ultra-compacte dans la titlebar, chaque entrée ouvre son dropdown.
+     Le logo ouvre le menu « Application » (paramètres, mises à jour…). */
+  let appMenu = $state<{ label: string; x: number; y: number } | null>(null);
 
-  /* ---------- menu applicatif, sur le logo ---------- */
-  const appMenuItems = $derived.by((): MenuItem[] => [
-    { label: "Nouveau document", keys: "Ctrl+N", run: newDocument },
-    { label: "Ouvrir un fichier…", keys: "Ctrl+O", run: openFile },
-    { label: "Ouvrir un dossier…", run: openFolder },
-    {
-      label: "Enregistrer",
-      keys: "Ctrl+S",
-      disabled: !app.active,
-      separatorBefore: true,
-      run: save,
-    },
-    {
-      label: "Enregistrer sous…",
-      keys: "Ctrl+Shift+S",
-      disabled: !app.active,
-      run: saveAs,
-    },
-    {
-      label: "Rechercher et remplacer…",
-      keys: "Ctrl+H",
-      disabled: app.mode !== "split",
-      separatorBefore: true,
-      run: openFind,
-    },
-    {
-      label: "Lecture",
-      keys: "Ctrl+1",
-      checked: app.mode === "read",
-      separatorBefore: true,
-      run: () => (app.mode = "read"),
-    },
-    { label: "Split", keys: "Ctrl+2", checked: app.mode === "split", run: () => (app.mode = "split") },
-    { label: "Zen", keys: "Ctrl+3", checked: app.mode === "zen", run: () => (app.mode = "zen") },
-    {
-      label: "Barre de dossiers",
-      keys: "Ctrl+B",
-      checked: app.sidebarVisible,
-      separatorBefore: true,
-      run: () => (app.sidebarVisible = !app.sidebarVisible),
-    },
-    {
-      label: "Thème sombre",
-      checked: app.theme === "dark",
-      run: () => (app.theme = app.theme === "dark" ? "light" : "dark"),
-    },
-    {
-      label: "Paramètres…",
-      keys: "Ctrl+,",
-      separatorBefore: true,
-      run: () => (app.settingsOpen = true),
-    },
-    { label: "Palette de commandes…", keys: "Ctrl+K", run: () => (app.paletteOpen = true) },
-  ]);
+  const appMenus = $derived.by((): Record<string, MenuItem[]> => ({
+    Fichier: [
+      { label: "Nouveau document", keys: "Ctrl+N", run: newDocument },
+      { label: "Ouvrir un fichier…", keys: "Ctrl+O", run: openFile },
+      { label: "Ouvrir un dossier…", run: openFolder },
+      {
+        label: "Révéler dans la barre latérale",
+        disabled: !app.active?.path,
+        run: () => void revealActiveInSidebar(),
+      },
+      { label: "Enregistrer", keys: "Ctrl+S", disabled: !app.active, run: save },
+      {
+        label: "Enregistrer sous…",
+        keys: "Ctrl+Shift+S",
+        disabled: !app.active,
+        run: saveAs,
+      },
+    ],
+    Édition: [
+      {
+        label: "Annuler",
+        keys: "Ctrl+Z",
+        disabled: !app.active,
+        run: () => editor?.undoEdit(),
+      },
+      {
+        label: "Rétablir",
+        keys: "Ctrl+Y",
+        disabled: !app.active,
+        run: () => editor?.redoEdit(),
+      },
+      { label: "Couper", disabled: !app.active, run: cutSelection },
+      { label: "Copier", disabled: !app.active, run: copySelection },
+      { label: "Coller", disabled: !app.active, run: pasteClipboard },
+      {
+        label: "Coller HTML en Markdown",
+        disabled: !app.active,
+        run: pasteHtmlAsMarkdown,
+      },
+      {
+        label: "Copier le Markdown en HTML",
+        disabled: !app.active,
+        run: copyMarkdownAsHtml,
+      },
+      {
+        label: "Rechercher et remplacer…",
+        keys: "Ctrl+H",
+        disabled: app.mode !== "split",
+        run: openFind,
+      },
+    ],
+    Affichage: [
+      {
+        label: "Lecture",
+        keys: "Ctrl+1",
+        checked: app.mode === "read",
+        run: () => (app.mode = "read"),
+      },
+      {
+        label: "Split",
+        keys: "Ctrl+2",
+        checked: app.mode === "split",
+        run: () => (app.mode = "split"),
+      },
+      {
+        label: "Zen",
+        keys: "Ctrl+3",
+        checked: app.mode === "zen",
+        run: () => (app.mode = "zen"),
+      },
+      {
+        label: "Barre de dossiers",
+        keys: "Ctrl+B",
+        checked: app.sidebarVisible,
+        run: () => (app.sidebarVisible = !app.sidebarVisible),
+      },
+      {
+        label: "Thème sombre",
+        checked: app.theme === "dark",
+        run: () => (app.theme = app.theme === "dark" ? "light" : "dark"),
+      },
+    ],
+    Application: [
+      {
+        label: "Paramètres…",
+        keys: "Ctrl+,",
+        run: () => (app.settingsOpen = true),
+      },
+      {
+        label: "Rechercher des mises à jour…",
+        run: () => void checkForUpdates(true),
+      },
+      {
+        label: "Palette de commandes…",
+        keys: "Ctrl+K",
+        run: () => (app.paletteOpen = true),
+      },
+    ],
+  }));
+
+  const menuBarEntries = ["Fichier", "Édition", "Affichage"];
+
+  function openAppMenu(label: string, x: number, y: number) {
+    appMenu = { label, x, y };
+  }
+
+  /* Bascule au survol : quand un menu est ouvert, glisser sur une autre
+     entrée ouvre la sienne — comportement des barres de menus classiques. */
+  function hoverAppMenu(label: string, x: number, y: number) {
+    if (appMenu) appMenu = { label, x, y };
+  }
 
   /* ---------- palette de commandes (Ctrl+K) : mêmes actions que les menus -- */
   const paletteCommands = $derived.by((): PaletteCommand[] => [
@@ -596,6 +687,13 @@
             icon: "close",
             keys: "Ctrl+W",
             run: () => closeTabs("one", app.activeIndex),
+          } satisfies PaletteCommand,
+          {
+            id: "reveal",
+            label: "Révéler dans la barre latérale",
+            icon: "locate",
+            keywords: "arborescence dossier chemin tree breadcrumb",
+            run: () => void revealActiveInSidebar(),
           } satisfies PaletteCommand,
         ]
       : []),
@@ -670,7 +768,18 @@
   });
 
   /* ---------- formatage ---------- */
-  function format(kind: "bold" | "italic" | "code" | "link" | "list" | "quote") {
+  function format(
+    kind:
+      | "bold"
+      | "italic"
+      | "code"
+      | "codeblock"
+      | "strike"
+      | "mark"
+      | "link"
+      | "list"
+      | "quote",
+  ) {
     switch (kind) {
       case "bold":
         editor?.wrap("**");
@@ -680,6 +789,15 @@
         break;
       case "code":
         editor?.wrap("`");
+        break;
+      case "codeblock":
+        editor?.codeBlock();
+        break;
+      case "strike":
+        editor?.wrap("~~");
+        break;
+      case "mark":
+        editor?.wrap("==");
         break;
       case "link":
         editor?.wrap("[", "](url)");
@@ -698,6 +816,80 @@
     else {
       editor?.scrollToLine(line);
       if (app.syncScroll) preview?.scrollToLine(line);
+    }
+  }
+
+  /* ---------- presse-papier ---------- */
+  async function copySelection() {
+    const text = editor?.selectedText() ?? "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function cutSelection() {
+    const text = editor?.selectedText() ?? "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      editor?.replaceSelection("");
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function pasteClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) editor?.replaceSelection(text);
+    } catch {
+      error = "Lecture du presse-papier impossible — coller avec Ctrl+V.";
+    }
+  }
+
+  /** Colle le presse-papier en le convertissant : le HTML (copié depuis une
+      page web, un mail…) devient Markdown ; un presse-papier texte pur est
+      collé tel quel. */
+  async function pasteHtmlAsMarkdown() {
+    try {
+      const items = await navigator.clipboard.read();
+      const htmlItem = items.find((i) => i.types.includes("text/html"));
+      const blob = htmlItem ? await htmlItem.getType("text/html") : null;
+      const html = blob ? await blob.text() : "";
+      if (html.trim()) {
+        editor?.replaceSelection(htmlToMarkdown(html));
+      } else {
+        const text = await navigator.clipboard.readText();
+        if (text) editor?.replaceSelection(text);
+      }
+    } catch {
+      error = "Lecture du presse-papier impossible — coller avec Ctrl+V.";
+    }
+  }
+
+  /** Copie le document rendu en HTML : un traitement de texte ou un mail le
+      reçoivent mis en forme ; un éditeur de texte reçoit la source Markdown. */
+  async function copyMarkdownAsHtml() {
+    const doc = app.active;
+    const html = app.rendered?.html ?? "";
+    if (!doc || !html) return;
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([doc.content], { type: "text/plain" }),
+        }),
+      ]);
+    } catch {
+      // WebView2 refusant le type text/html : le HTML brut reste utile.
+      try {
+        await navigator.clipboard.writeText(html);
+      } catch (e) {
+        error = String(e);
+      }
     }
   }
 
@@ -808,7 +1000,10 @@
       onNew={newDocument}
       onCloseTab={(i) => closeTabs("one", i)}
       onTabMenu={(index, x, y) => (menu = { index, x, y })}
-      onAppMenu={(x, y) => (appMenu = { x, y })}
+      menuEntries={menuBarEntries}
+      menusVisible={appMenu !== null}
+      onMenu={openAppMenu}
+      onMenuHover={hoverAppMenu}
     />
     <div class="body">
       {#if app.sidebarVisible}
@@ -876,7 +1071,10 @@
       onNew={newDocument}
       onCloseTab={(i) => closeTabs("one", i)}
       onTabMenu={(index, x, y) => (menu = { index, x, y })}
-      onAppMenu={(x, y) => (appMenu = { x, y })}
+      menuEntries={menuBarEntries}
+      menusVisible={appMenu !== null}
+      onMenu={openAppMenu}
+      onMenuHover={hoverAppMenu}
     />
 
     {#if app.mode === "read"}
@@ -925,7 +1123,27 @@
         {#if app.sidebarVisible}
           <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} />
         {/if}
-        <Editor bind:this={editor} onScrollLine={fromEditor} />
+        <div class="editor-col">
+          <!-- Fil d'Ariane : un fichier ouvert hors du dossier en cours ne
+               laissait aucune trace de son emplacement. Le bouton révèle le
+               fichier dans l'arborescence (ou charge son dossier parent). -->
+          <div class="crumbs">
+            <Icon name="file" size={12} width={1.4} />
+            <span class="crumb-path" title={app.active?.path || app.active?.name}>
+              {app.active?.path || app.active?.name}
+            </span>
+            {#if app.active?.path}
+              <button
+                class="icon-btn small"
+                onclick={() => void revealActiveInSidebar()}
+                title="Révéler dans la barre latérale"
+              >
+                <Icon name="locate" size={13} width={1.4} />
+              </button>
+            {/if}
+          </div>
+          <Editor bind:this={editor} onScrollLine={fromEditor} />
+        </div>
         <div class="splitter"></div>
         <Preview
           bind:this={preview}
@@ -935,7 +1153,11 @@
         />
       </div>
     {/if}
+  {/if}
 
+  <!-- Barre d'état globale : écran d'accueil et modes classiques, jamais en
+       Zen (qui garde ses outils propres dans son coin). -->
+  {#if !(app.mode === "zen" && !!app.active)}
     <StatusBar />
   {/if}
 
@@ -949,7 +1171,7 @@
     <ContextMenu
       x={appMenu.x}
       y={appMenu.y}
-      items={appMenuItems}
+      items={appMenus[appMenu.label] ?? []}
       onClose={() => (appMenu = null)}
     />
   {/if}
@@ -1002,6 +1224,45 @@
     flex-shrink: 0;
     background: var(--border-strong);
     cursor: col-resize;
+  }
+
+  /* La colonne éditeur embarque son fil d'Ariane : la barre ne porte que sur
+     l'éditeur, pas sur la barre latérale ni l'aperçu. */
+  .editor-col {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .crumbs {
+    height: 30px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 8px 0 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--fg-3);
+    font-size: 11.5px;
+    background: color-mix(in oklab, var(--surface-editor) 40%, transparent);
+  }
+  .crumb-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* Tronque le début (la racine) plutôt que la fin : c'est la fin qui
+       situe le fichier. Le survol donne le chemin complet. */
+    direction: rtl;
+    text-align: left;
+    font-family: var(--font-mono, monospace);
+  }
+  .crumbs .icon-btn.small {
+    width: 22px;
+    height: 22px;
+    border-radius: var(--r-sm);
   }
 
   /* ---------- Zen ---------- */

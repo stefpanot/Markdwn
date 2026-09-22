@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
+  import markIcon from "$lib/assets/icon.svg";
   import { app } from "$lib/state.svelte";
   import { minimise, toggleMaximise, closeWindow } from "$lib/window";
 
@@ -7,10 +8,18 @@
     onNew: () => void;
     onCloseTab: (index: number) => void;
     onTabMenu: (index: number, x: number, y: number) => void;
-    /** Menu applicatif, ouvert depuis le logo — façon Zed. */
-    onAppMenu: (x: number, y: number) => void;
+    /** Entrées de la barre de menus (Fichier, Édition, Affichage…), chacune
+        ouvrant son dropdown — façon Zed, ultra-compact dans la titlebar.
+        Rendues UNIQUEMENT quand `menusVisible` est vrai : par défaut seul
+        le logo s'affiche, le clic dessus révèle les entrées. */
+    menuEntries: string[];
+    menusVisible: boolean;
+    onMenu: (label: string, x: number, y: number) => void;
+    /** Appelé au survol d'une entrée : sans effet tant qu'aucun menu n'est
+        ouvert, sinon bascule sur le menu survolé (comportement classique). */
+    onMenuHover: (label: string, x: number, y: number) => void;
   }
-  let { onNew, onCloseTab, onTabMenu, onAppMenu }: Props = $props();
+  let { onNew, onCloseTab, onTabMenu, menuEntries, menusVisible, onMenu, onMenuHover }: Props = $props();
 
   let tabsStrip: HTMLDivElement;
 
@@ -32,9 +41,16 @@
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   });
 
-  function openAppMenu(e: MouseEvent) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    onAppMenu(r.left, r.bottom + 6);
+  function menuPos(el: HTMLElement) {
+    const r = el.getBoundingClientRect();
+    return { x: r.left, y: r.bottom + 6 };
+  }
+
+  /* Le logo ouvre le menu « Application » (paramètres, mises à jour…), comme
+     le wordmark de Zed. */
+  function onLogoClick(e: MouseEvent) {
+    const { x, y } = menuPos(e.currentTarget as HTMLElement);
+    onMenu("Application", x, y);
   }
 </script>
 
@@ -47,22 +63,36 @@
      (marges, interstices entre onglets, bandes au-dessus et en dessous) sans
      rendre les onglets ni les boutons moins cliquables. -->
 <div class="titlebar" data-tauri-drag-region>
-  <!-- Le bouton de barre de dossiers vit ICI et nulle part ailleurs : la
-       titlebar est le seul chrome présent dans tous les modes ET sur l'écran
-       d'accueil. Dans la barre d'outils, il devenait inatteignable dès qu'on
-       fermait tous les fichiers avec la barre masquée. -->
+  <!-- Le bouton de barre de dossiers vit dans la barre d'état basse
+       (StatusBar), jamais ici : sa position ne varie plus selon le mode. -->
   <div class="left" data-tauri-drag-region>
-    <button class="mark" onclick={openAppMenu} title="Menu — actions et paramètres">
-      <span class="mark-glyph"><Icon name="wordmark" size={13} width={1.9} /></span>
+    <button class="mark" onclick={onLogoClick} title="Menu Application — paramètres et mises à jour">
+      <img src={markIcon} alt="Markdwn" />
     </button>
-    <button
-      class="icon-btn"
-      onclick={() => (app.sidebarVisible = !app.sidebarVisible)}
-      aria-pressed={app.sidebarVisible}
-      title="Barre de dossiers — Ctrl+B"
-    >
-      <Icon name="sidebar" size={16} width={1.4} />
-    </button>
+    <!-- Barre de menus proprement dite : entrées inline ultra-compactes,
+         façon Zed. Masquée au repos, révélée par le clic sur le logo et
+         visible tant qu'un menu est ouvert. Le survol bascule d'un menu
+         ouvert à l'entrée voisine. -->
+    {#if menusVisible}
+      <div class="menubar" role="menubar">
+        {#each menuEntries as entry (entry)}
+          <button
+            class="menu-entry"
+            role="menuitem"
+            onclick={(e) => {
+              const { x, y } = menuPos(e.currentTarget as HTMLElement);
+              onMenu(entry, x, y);
+            }}
+            onmouseenter={(e) => {
+              const { x, y } = menuPos(e.currentTarget as HTMLElement);
+              onMenuHover(entry, x, y);
+            }}
+          >
+            {entry}
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <div class="tabs" data-tauri-drag-region bind:this={tabsStrip} onwheel={onTabsWheel}>
@@ -140,25 +170,47 @@
     flex-shrink: 0;
   }
 
+  /* Le pictogramme de marque est autosuffisant (tuile sombre aux coins
+     arrondis) : pas de dégradé derrière, juste le logo. */
   .mark {
     width: 22px;
     height: 22px;
-    border-radius: var(--r-md);
-    background: linear-gradient(150deg, var(--accent), color-mix(in oklab, var(--accent) 80%, black));
-    color: #fff;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
   }
   .mark:hover {
-    filter: brightness(1.12);
+    filter: brightness(1.15);
   }
-  /* Le glyphe ne doit pas intercepter le clic destiné au bouton. */
-  .mark-glyph {
-    display: flex;
+  /* Le logo ne doit pas intercepter le clic destiné au bouton. */
+  .mark img {
+    width: 22px;
+    height: 22px;
+    display: block;
     pointer-events: none;
+  }
+
+  /* Barre de menus inline : ultra-compacte, à peine plus qu'une étiquette.
+     Zed pose des entrées 11px dans la titlebar ; ici 11.5px garde la
+     lisibilité à côté des onglets sans voler leur place. */
+  .menubar {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    margin-left: 2px;
+  }
+  .menu-entry {
+    padding: 3px 8px;
+    border-radius: var(--r-md);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--fg-2);
+    white-space: nowrap;
+  }
+  .menu-entry:hover {
+    background: var(--accent-soft);
+    color: var(--accent-on);
   }
 
   /* Dimensionné au contenu, pas flex:1 : c'est ce qui libère .grip.

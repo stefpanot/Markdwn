@@ -88,6 +88,12 @@ class AppState {
   /** Liste plate ordonnée des .md du dossier, pour fichier suivant/précédent. */
   folderFiles = $state<string[]>([]);
 
+  /** Dernier chemin demandé pour la révélation dans l'arborescence. */
+  revealPath = $state("");
+  /** Incrémenté à CHAQUE demande de révélation : rejoue l'expansion des
+      dossiers et le défilement même si le chemin n'a pas changé. */
+  revealTick = $state(0);
+
   /** La barre de dossiers se masque dans TOUS les modes, lecture comprise :
       passer au fichier suivant ne doit pas obliger à changer de posture. */
   sidebarVisible = $state(true);
@@ -99,6 +105,8 @@ class AppState {
   readingWidth = $state<"centered" | "full">("centered");
   syncScroll = $state(true);
   restoreLastFolder = $state(true);
+  /** Vérification silencieuse des mises à jour au lancement. */
+  autoUpdate = $state(true);
 
   /** Faux tant que la configuration n'est pas chargée : il ne faut surtout pas
       réécrire le fichier avec les valeurs par défaut entre-temps. */
@@ -127,6 +135,7 @@ class AppState {
       syncScroll: this.syncScroll,
       lastFolder: this.folderPath,
       restoreLastFolder: this.restoreLastFolder,
+      autoUpdate: this.autoUpdate,
     };
   }
 
@@ -140,6 +149,7 @@ class AppState {
     this.sidebarVisible = !!c.sidebarVisible;
     this.syncScroll = !!c.syncScroll;
     this.restoreLastFolder = !!c.restoreLastFolder;
+    this.autoUpdate = c.autoUpdate !== false;
   }
 
   resetSettings() {
@@ -150,6 +160,7 @@ class AppState {
     this.sidebarVisible = true;
     this.syncScroll = true;
     this.restoreLastFolder = true;
+    this.autoUpdate = true;
   }
 
   /** Ouvre le document de découverte, à la demande depuis l'écran d'accueil. */
@@ -214,3 +225,19 @@ class AppState {
 }
 
 export const app = new AppState();
+
+/** Vrai si `path` vit dans le dossier `dir`. Le test exige un séparateur
+    juste après `dir` : C:\foo ne « contient » pas C:\foobar. */
+export function isPathUnder(path: string, dir: string): boolean {
+  if (!dir) return false;
+  return (
+    path.length > dir.length &&
+    path.startsWith(dir) &&
+    (path[dir.length] === "\\" || path[dir.length] === "/")
+  );
+}
+
+/** Dossier parent d'un chemin de fichier ("C:\a\b.md" → "C:\a"). */
+export function parentDir(path: string): string {
+  return path.replace(/[\\/][^\\/]+$/, "");
+}

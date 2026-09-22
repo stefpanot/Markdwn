@@ -77,6 +77,36 @@ function Enable-NodeEnv {
     return $node
 }
 
+<#
+    Exporte les variables de signature Tauri pour `tauri build`.
+
+    Depuis l'ajout du plugin updater, `createUpdaterArtifacts` exige une
+    signature : sans ces variables, le build local échoue à la fin. La clé
+    privée reste hors du dépôt (~/.tauri/markdwn.key) ; le mot de passe est
+    lu depuis ~/.tauri/markdwn.pass (à créer une fois, hors git). Une pièce
+    manquante n'empêche que la production d'artefacts de mise à jour, donc
+    on avertit plutôt qu'on n'échoue.
+#>
+function Enable-SigningEnv {
+    $tauriDir = Join-Path $env:USERPROFILE '.tauri'
+    $keyPath = Join-Path $tauriDir 'markdwn.key'
+    $passPath = Join-Path $tauriDir 'markdwn.pass'
+    if (Test-Path $keyPath) {
+        # Contenu ET chemin : le bundler de mise à jour ne lit que la variable
+        # de contenu, le sous-commande `signer` accepte les deux. On pose
+        # donc les deux pour couvrir les deux code paths.
+        $env:TAURI_SIGNING_PRIVATE_KEY = [IO.File]::ReadAllText($keyPath).Trim()
+        $env:TAURI_SIGNING_PRIVATE_KEY_PATH = $keyPath
+        if (Test-Path $passPath) {
+            $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = (Get-Content $passPath -Raw).Trim()
+        } else {
+            Write-Host "Mot de passe de signature absent ($passPath) : creation d'un .pass necessaire pour signer." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Cle de signature absente ($keyPath) : pas d'artefacts de mise a jour signes." -ForegroundColor Yellow
+    }
+}
+
 # --- tâche version : pas besoin de l'environnement MSVC ---
 if ($Task -eq 'version') {
     Enable-NodeEnv | Out-Null
@@ -117,6 +147,7 @@ switch ($Task) {
     'build' {
         # Ne jamais livrer un binaire dont la version a dérivé.
         Assert-SingleVersionSource
+        Enable-SigningEnv
         Write-Host ("Build de la version {0}" -f (Get-AppVersion)) -ForegroundColor DarkGray
         & npm run tauri build
     }

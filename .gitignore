@@ -39,3 +39,6 @@ npm-debug.log*
 
 # Les sorties Rust / Tauri sont exclues dans src-tauri/.gitignore.
 # Conserver package-lock.json et src-tauri/Cargo.lock pour figer les dépendances.
+
+# Cache Python (scripts de la CI)
+__pycache__/

@@ -17,6 +17,9 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-ask",
+    "updater:default",
+    "process:allow-restart",
+    "process:allow-exit",
     "window-state:default"
   ]
 }

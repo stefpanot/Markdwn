@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
+  import markIcon from "$lib/assets/icon.svg";
   import { app } from "$lib/state.svelte";
 
   /* Affiché quand aucun document n'est ouvert. Pas d'onglet fantôme, et pas de
@@ -30,7 +31,7 @@
 <div class="welcome">
   <div class="card">
     <div class="mark" aria-hidden="true">
-      <Icon name="wordmark" size={24} width={1.8} />
+      <img src={markIcon} alt="" />
     </div>
 
     <h1>Markdwn</h1>
@@ -104,17 +105,17 @@
     max-width: 420px;
   }
 
+  /* Pictogramme de marque, en grand : la tuile sombre porte son propre
+     contraste sur les deux thèmes, aucun dégradé derrière. */
   .mark {
-    width: 42px;
-    height: 42px;
-    border-radius: 11px;
-    background: linear-gradient(150deg, var(--accent), color-mix(in oklab, var(--accent) 78%, black));
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 10px rgb(0 0 0 / 0.28);
+    width: 56px;
+    height: 56px;
     margin-bottom: 20px;
+  }
+  .mark img {
+    width: 56px;
+    height: 56px;
+    display: block;
   }
 
   h1 {
