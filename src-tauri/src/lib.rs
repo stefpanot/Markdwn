@@ -620,21 +620,28 @@ mod tests {
 
     #[test]
     fn path_guard_allows_only_registered_entries() {
+        // Racine selon l'OS : sur Unix, « C:\notes » est un simple nom de
+        // fichier relatif, et un test écrit pour Windows ne pourrait pas y
+        // passer (composants vs séparateurs).
+        let root = Path::new(if cfg!(windows) { r"C:\notes" } else { "/notes" });
+        let base = root.parent().unwrap();
+        let loose = base.join("loose").join("seul.md");
+
         let mut allowed = HashSet::new();
-        allowed.insert(normalise(Path::new(r"C:\notes")));
-        allowed.insert(normalise(Path::new(r"C:\loose\seul.md")));
+        allowed.insert(normalise(root));
+        allowed.insert(normalise(&loose));
 
         // Un dossier ouvert couvre tout son sous-arbre…
-        assert!(is_allowed(&allowed, Path::new(r"C:\notes\dossier\a.md")));
+        assert!(is_allowed(&allowed, &root.join("dossier").join("a.md")));
         // …les `..` normalisés compris…
-        assert!(is_allowed(&allowed, Path::new(r"C:\notes\dossier\..\a.md")));
+        assert!(is_allowed(&allowed, &root.join("dossier").join("..").join("a.md")));
         // …mais jamais un voisin au nom préfixé…
-        assert!(!is_allowed(&allowed, Path::new(r"C:\notes2\a.md")));
+        assert!(!is_allowed(&allowed, &base.join("notes2").join("a.md")));
         // …ni un fichier hors du périmètre.
-        assert!(!is_allowed(&allowed, Path::new(r"C:\autre\b.md")));
+        assert!(!is_allowed(&allowed, &base.join("autre").join("b.md")));
 
         // Une entrée fichier n'autorise que ce fichier.
-        assert!(is_allowed(&allowed, Path::new(r"C:\loose\seul.md")));
-        assert!(!is_allowed(&allowed, Path::new(r"C:\loose\autre.md")));
+        assert!(is_allowed(&allowed, &loose));
+        assert!(!is_allowed(&allowed, &loose.parent().unwrap().join("autre.md")));
     }
 }
