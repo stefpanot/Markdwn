@@ -211,8 +211,13 @@ jobs:
           mapfile -d '' files < <(find release-assets -type f -print0)
           test "${#files[@]}" -gt 0
           (cd release-assets && sha256sum *) > SHA256SUMS.txt
+          # Les betas sont publiées en releases COMPLETES : GitHub interdit
+          # qu'une release « prerelease » soit « latest », et l'endpoint de
+          # l'auto-update (/releases/latest/download/latest.json) ne résout
+          # que la release « latest ». En --prerelease, l'auto-update était
+          # donc mort depuis la beta.1 (vu le 2026-09-24). Le caractère beta
+          # reste visible dans le titre et le tag.
           flags=()
-          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease --latest=false); fi
           gh release create "$TAG" "${files[@]}" SHA256SUMS.txt \
             --verify-tag --draft --title "Markdwn $TAG" --generate-notes "${flags[@]}"
           gh release edit "$TAG" --draft=false "${flags[@]}"
@@ -226,10 +231,9 @@ jobs:
           fi
 
       # Auto-update : le endpoint de tauri.conf.json sert le latest.json de la
-      # dernière release stable. Chaque plateforme pointe vers son installeur
-      # signé (signature minisign = contenu du .sig généré au build). Les
-      # releases « prerelease » le reçoivent aussi, mais /releases/latest/ ne
-      # les résout jamais : elles restent hors auto-update par construction.
+      # release marquée « latest » — la plus récente, betas comprises. Chaque
+      # plateforme pointe vers son installeur signé (signature minisign =
+      # contenu du .sig généré au build).
       - name: latest.json for the updater
         env:
           GH_TOKEN: ${{ github.token }}
