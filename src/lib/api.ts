@@ -36,6 +36,11 @@ export const readDocument = (path: string) =>
 export const writeDocument = (path: string, content: string) =>
   invoke<void>("write_document", { path, content });
 
+/** Enregistre un chemin comme explicitement ouvert par l'utilisateur
+    (dialogue, « ouvrir avec », enregistrer sous). Les commandes de lecture/
+    écriture refusent tout chemin qui n'a pas franchi cette porte — issue #4. */
+export const allowPath = (path: string) => invoke<void>("allow_path", { path });
+
 export const listDir = (path: string) =>
   invoke<DirEntryInfo[]>("list_dir", { path });
 

@@ -21,6 +21,7 @@
     type PaletteCommand,
   } from "$lib/components/CommandPalette.svelte";
   import {
+    allowPath,
     appVersion,
     consumeInitialFile,
     findInDocument,
@@ -62,7 +63,9 @@
         if (loaded.config.restoreLastFolder && loaded.config.lastFolder) {
           // Le dossier a pu être déplacé ou supprimé depuis : ce n'est pas une
           // erreur à afficher, juste un dossier qu'on ne rouvre pas.
+          // allowPath : la restauration vient d'un choix utilisateur passé.
           try {
+            await allowPath(loaded.config.lastFolder);
             await refreshFolder(loaded.config.lastFolder);
           } catch {
             /* ignoré volontairement */
@@ -85,9 +88,15 @@
       // l'instance existante au lieu d'en lancer une seconde.
       try {
         const initial = await consumeInitialFile();
-        if (initial) await openPath(initial);
-        await listen<string>("open-file", (e) => {
-          void openPath(e.payload);
+        if (initial) {
+          // « Ouvrir avec » : l'action utilisateur d'origine, on l'enregistre.
+          await allowPath(initial);
+          await openPath(initial);
+        }
+        await listen<string>("open-file", async (e) => {
+          // Double-clic Windows dérouté par le plugin single-instance.
+          await allowPath(e.payload);
+          await openPath(e.payload);
         });
       } catch {
         /* Hors Tauri : ni argument ni événement à traiter. */
@@ -227,7 +236,10 @@
       error = "Ouvrir un fichier n'est disponible que dans l'application de bureau.";
       return;
     }
-    if (typeof picked === "string") await openPath(picked);
+    if (typeof picked === "string") {
+      await allowPath(picked);
+      await openPath(picked);
+    }
   }
 
   async function refreshFolder(path: string) {
@@ -245,7 +257,9 @@
     if (!doc?.path) return;
     if (!isPathUnder(doc.path, app.folderPath)) {
       try {
-        await refreshFolder(parentDir(doc.path));
+        const parent = parentDir(doc.path);
+        await allowPath(parent);
+        await refreshFolder(parent);
       } catch (e) {
         error = String(e);
         return;
@@ -267,6 +281,7 @@
     }
     if (typeof picked !== "string") return;
     try {
+      await allowPath(picked);
       await refreshFolder(picked);
       app.sidebarVisible = true;
       error = "";
@@ -289,7 +304,11 @@
       error = "Enregistrer sous n'est disponible que dans l'application de bureau.";
       return null;
     }
-    return typeof picked === "string" ? picked : null;
+    if (typeof picked !== "string") return null;
+    // Le chemin choisi devient inscriptible (garde Rust, issue #4) et son
+    // dossier accessible au protocole asset:.
+    await allowPath(picked);
+    return picked;
   }
 
   async function writeTo(path: string) {

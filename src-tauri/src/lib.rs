@@ -3,6 +3,7 @@ mod markdown;
 mod search;
 
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Emitter;
@@ -31,6 +32,66 @@ pub struct DirEntryInfo {
     is_dir: bool,
 }
 
+/// Registre des chemins explicitement ouverts par l'utilisateur (issue #4) :
+/// `read_document`, `write_document`, `list_dir` et `list_markdown_tree`
+/// refusent tout ce qui n'y figure pas, et le protocole asset: n'est plus
+/// borné qu'à ces racines au lieu du `**` statique d'avant.
+struct AllowedPaths(Mutex<HashSet<PathBuf>>);
+
+/// Un chemin passe s'il EST une entrée du registre ou s'il est SOUS une
+/// entrée (un dossier ouvert couvre tout son sous-arbre). Comparaison sur des
+/// chemins normalisés lexicalement ; `starts_with` raisonne par composants,
+/// donc « C:\notes » n'englobe jamais « C:\notes2 ».
+fn is_allowed(allowed: &HashSet<PathBuf>, p: &Path) -> bool {
+    let p = normalise(p);
+    allowed.contains(&p) || allowed.iter().any(|root| p.starts_with(root))
+}
+
+/// Ajoute un chemin au registre et son dossier au scope du protocole asset:.
+/// Partagé par `allow_path` (front) et la navigation par liens. C'est un étage
+/// de défense en profondeur : le front n'appelle `allow_path` qu'après de
+/// vraies actions utilisateur (dialogue, « ouvrir avec »), et bloquer
+/// l'exécution de script dans la webview est le rôle de la CSP + d'ammonia.
+fn register_allowed(state: &AllowedPaths, app: &tauri::AppHandle, p: &Path) -> Result<(), String> {
+    let p = normalise(p);
+    // Pour un dossier, c'est lui-même qui rejoint le scope ; pour un fichier,
+    // c'est son parent — c'est ce qui permet aux images du document de
+    // charger même sans dossier ouvert.
+    let dir = if p.is_dir() {
+        p.clone()
+    } else {
+        p.parent().map(Path::to_path_buf).unwrap_or_default()
+    };
+    state.0.lock().map_err(|e| e.to_string())?.insert(p);
+    if !dir.as_os_str().is_empty() {
+        app.asset_protocol_scope()
+            .allow_directory(&dir, true)
+            .map_err(|e| format!("scope asset : {e}"))?;
+    }
+    Ok(())
+}
+
+/// Garde des commandes de lecture/écriture : refuse un chemin hors registre.
+fn ensure_allowed(state: &AllowedPaths, path: &str) -> Result<PathBuf, String> {
+    let p = PathBuf::from(path);
+    let allowed = state.0.lock().map_err(|e| e.to_string())?;
+    if !is_allowed(&allowed, &p) {
+        return Err(format!("ce chemin n'a pas été ouvert dans Markdwn : {path}"));
+    }
+    Ok(p)
+}
+
+/// Enregistre un chemin explicitement ouvert par l'utilisateur — dialogue
+/// (fichier, dossier, enregistrer sous) ou fichier reçu par « ouvrir avec ».
+#[tauri::command]
+fn allow_path(
+    path: String,
+    state: tauri::State<'_, AllowedPaths>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    register_allowed(&state, &app, Path::new(&path))
+}
+
 /// Markdown -> HTML, plus le sommaire et les compteurs. Le front n'a aucune
 /// logique de parsing : il patche le DOM à partir de ce que renvoie Rust.
 #[tauri::command]
@@ -39,8 +100,8 @@ fn render_markdown(source: String) -> markdown::Rendered {
 }
 
 #[tauri::command]
-fn read_document(path: String) -> Result<Document, String> {
-    let p = PathBuf::from(&path);
+fn read_document(path: String, state: tauri::State<'_, AllowedPaths>) -> Result<Document, String> {
+    let p = ensure_allowed(&state, &path)?;
     let content = std::fs::read_to_string(&p).map_err(|e| format!("{path} : {e}"))?;
     Ok(Document {
         name: file_name_of(&p),
@@ -50,8 +111,13 @@ fn read_document(path: String) -> Result<Document, String> {
 }
 
 #[tauri::command]
-fn write_document(path: String, content: String) -> Result<(), String> {
-    std::fs::write(&path, content).map_err(|e| format!("{path} : {e}"))
+fn write_document(
+    path: String,
+    content: String,
+    state: tauri::State<'_, AllowedPaths>,
+) -> Result<(), String> {
+    let p = ensure_allowed(&state, &path)?;
+    std::fs::write(&p, content).map_err(|e| format!("{path} : {e}"))
 }
 
 /// Occurrences d'une query dans le document courant, positions UTF-16 prêtes
@@ -98,9 +164,10 @@ fn consume_initial_file(state: tauri::State<Mutex<Option<String>>>) -> Option<St
 /// Dossiers et fichiers Markdown seulement — c'est un éditeur Markdown, pas un
 /// explorateur de fichiers générique.
 #[tauri::command]
-fn list_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
+fn list_dir(path: String, state: tauri::State<'_, AllowedPaths>) -> Result<Vec<DirEntryInfo>, String> {
+    let base = ensure_allowed(&state, &path)?;
     let mut out = Vec::new();
-    for entry in std::fs::read_dir(&path).map_err(|e| format!("{path} : {e}"))? {
+    for entry in std::fs::read_dir(&base).map_err(|e| format!("{path} : {e}"))? {
         let entry = entry.map_err(|e| e.to_string())?;
         let p = entry.path();
         let is_dir = p.is_dir();
@@ -185,9 +252,23 @@ fn resolve_relative(from: &str, href: &str) -> Result<PathBuf, String> {
 }
 
 /// Résout un lien relatif d'un document Markdown vers un chemin absolu.
+/// La cible est enregistrée au passage : naviguer vers un document lié
+/// (« ../../notes/autre.md ») est un flux légitime, le garde des chemins ne
+/// doit pas le briser.
 #[tauri::command]
-fn resolve_link(from: String, href: String) -> Result<ResolvedLink, String> {
-    let mut resolved = resolve_relative(&from, &href)?;
+fn resolve_link(
+    from: String,
+    href: String,
+    state: tauri::State<'_, AllowedPaths>,
+    app: tauri::AppHandle,
+) -> Result<ResolvedLink, String> {
+    let resolved = resolve_link_inner(&from, &href)?;
+    register_allowed(&state, &app, Path::new(&resolved.path))?;
+    Ok(resolved)
+}
+
+fn resolve_link_inner(from: &str, href: &str) -> Result<ResolvedLink, String> {
+    let mut resolved = resolve_relative(from, href)?;
 
     // Beaucoup de wikis lient sans extension : `./local-setup` -> `local-setup.md`.
     if !resolved.exists() && resolved.extension().is_none() {
@@ -268,9 +349,13 @@ fn normalise(p: &Path) -> PathBuf {
 /// permet « fichier suivant / précédent » sans surprise : l'ordre du clavier
 /// est celui que l'œil voit.
 #[tauri::command]
-fn list_markdown_tree(path: String) -> Result<Vec<String>, String> {
+fn list_markdown_tree(
+    path: String,
+    state: tauri::State<'_, AllowedPaths>,
+) -> Result<Vec<String>, String> {
+    let base = ensure_allowed(&state, &path)?;
     let mut out = Vec::new();
-    walk(Path::new(&path), 0, &mut out);
+    walk(&base, 0, &mut out);
     Ok(out)
 }
 
@@ -352,10 +437,12 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(initial_file))
+        .manage(AllowedPaths(Mutex::new(HashSet::new())))
         .invoke_handler(tauri::generate_handler![
             render_markdown,
             read_document,
             write_document,
+            allow_path,
             find_in_document,
             replace_in_document,
             consume_initial_file,
@@ -408,20 +495,20 @@ mod tests {
         let from = root.join("docs/architecture/glossary.md").to_string_lossy().into_owned();
 
         // remontée d'un niveau
-        let r = resolve_link(from.clone(), "../index.md".into()).unwrap();
+        let r = resolve_link_inner(&from, "../index.md").unwrap();
         assert!(r.exists && r.is_markdown);
         assert_eq!(PathBuf::from(&r.path), root.join("docs/index.md"));
 
         // href percent-encodé
-        let r = resolve_link(from.clone(), "../mon%20fichier.md".into()).unwrap();
+        let r = resolve_link_inner(&from, "../mon%20fichier.md").unwrap();
         assert!(r.exists, "un href percent-encodé doit être décodé");
 
         // sans extension
-        let r = resolve_link(from.clone(), "../index".into()).unwrap();
+        let r = resolve_link_inner(&from, "../index").unwrap();
         assert!(r.exists, "on tente l'extension .md quand il n'y en a pas");
 
         // cible absente : on renvoie le chemin résolu, pas une erreur
-        let r = resolve_link(from, "../absent.md".into()).unwrap();
+        let r = resolve_link_inner(&from, "../absent.md").unwrap();
         assert!(!r.exists);
         assert!(r.path.ends_with("absent.md"));
 
@@ -529,5 +616,25 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn path_guard_allows_only_registered_entries() {
+        let mut allowed = HashSet::new();
+        allowed.insert(normalise(Path::new(r"C:\notes")));
+        allowed.insert(normalise(Path::new(r"C:\loose\seul.md")));
+
+        // Un dossier ouvert couvre tout son sous-arbre…
+        assert!(is_allowed(&allowed, Path::new(r"C:\notes\dossier\a.md")));
+        // …les `..` normalisés compris…
+        assert!(is_allowed(&allowed, Path::new(r"C:\notes\dossier\..\a.md")));
+        // …mais jamais un voisin au nom préfixé…
+        assert!(!is_allowed(&allowed, Path::new(r"C:\notes2\a.md")));
+        // …ni un fichier hors du périmètre.
+        assert!(!is_allowed(&allowed, Path::new(r"C:\autre\b.md")));
+
+        // Une entrée fichier n'autorise que ce fichier.
+        assert!(is_allowed(&allowed, Path::new(r"C:\loose\seul.md")));
+        assert!(!is_allowed(&allowed, Path::new(r"C:\loose\autre.md")));
     }
 }
