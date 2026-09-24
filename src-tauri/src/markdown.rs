@@ -204,6 +204,32 @@ fn split_mark(t: &str) -> Vec<(&str, bool)> {
     out
 }
 
+/// Nettoie le HTML rendu avant qu'il n'atteigne la webview.
+///
+/// pulldown-cmark laisse passer le HTML brut d'un document Markdown ; or
+/// l'aperçu l'injecte tel quel ({@html} côté Svelte). Sans ce filtre, un
+/// simple `<script>` ou `onerror=` dans un .md suffirait à exécuter du JS
+/// dans l'application. La liste blanche d'ammonia garde tout ce que le rendu
+/// produit légitimement : les classes syntect et `srcmap`, les `id` d'ancre
+/// des titres, les `data-line` de la cartographie source, les cases à cocher
+/// des tasklists et les URLs relatives que le front résout ensuite en Rust.
+fn sanitize(html: &str) -> String {
+    ammonia::Builder::default()
+        // Les attributs que NOTRE rendu émet et dont la webview a besoin.
+        .add_generic_attributes(["class", "id", "data-line"])
+        // Tasklists (ENABLE_TASKLISTS) : `<input disabled type="checkbox">`.
+        .add_tags(["input", "mark"])
+        .add_tag_attributes("input", ["type", "checked", "disabled"])
+        // Les href/src relatifs (`./autre.md`, `images/x.png`) doivent
+        // survivre : c'est le front qui les résout et les réécrit.
+        .url_relative(ammonia::UrlRelative::PassThrough)
+        // Images data: URI (resolve_asset les laisse telles quelles) et src
+        // déjà réécrits vers le protocole asset: de Tauri.
+        .add_url_schemes(["data", "asset"])
+        .clean(html)
+        .to_string()
+}
+
 pub fn render(source: &str) -> Rendered {
     let starts = line_starts(source);
     let mut parser = Parser::new_ext(source, options()).into_offset_iter();
@@ -334,6 +360,7 @@ pub fn render(source: &str) -> Rendered {
 
     let mut html = String::with_capacity(source.len() * 3 / 2);
     pulldown_cmark::html::push_html(&mut html, events.into_iter());
+    let html = sanitize(&html);
 
     Rendered {
         html,
@@ -482,5 +509,59 @@ mod tests {
         // toujours (« let », « a », « = », « 1; »).
         let r = render("```rust\nlet a = 1;\n```\n");
         assert_eq!(r.words, 4);
+    }
+
+    // --- Sanification : le HTML d'un document ne doit rien exécuter. ---
+
+    #[test]
+    fn raw_script_is_stripped() {
+        let r = render("# Titre\n\n<script>alert(1)</script>\n");
+        assert!(!r.html.contains("<script"));
+        assert!(!r.html.contains("alert(1)"));
+        // Le reste du document est rendu normalement.
+        assert!(r.html.contains("Titre"));
+    }
+
+    #[test]
+    fn inline_event_handlers_are_stripped() {
+        // pulldown laisse passer les <img> en HTML brut ; le front les repère
+        // ensuite par leur src pour les résoudre. onerror doit disparaître.
+        let r = render("<img src=\"x.png\" onerror=\"alert(1)\">\n");
+        assert!(r.html.contains("src=\"x.png\""));
+        assert!(!r.html.contains("onerror"));
+    }
+
+    #[test]
+    fn javascript_links_are_stripped() {
+        let r = render("[cliquer](javascript:alert(1))\n");
+        assert!(!r.html.contains("javascript:"));
+    }
+
+    #[test]
+    fn tasklist_checkboxes_survive() {
+        let r = render("- [x] fait\n- [ ] à faire\n");
+        assert_eq!(r.html.matches("type=\"checkbox\"").count(), 2);
+        assert!(r.html.contains("checked"));
+        assert!(r.html.contains("disabled"));
+    }
+
+    #[test]
+    fn relative_links_and_images_survive() {
+        // Le front résout ces src/href en Rust : ils doivent traverser la
+        // sanification (ammonia refuse par défaut les URLs relatives).
+        let r = render("[doc](./autre.md)\n\n![img](images/x.png)\n");
+        assert!(r.html.contains("href=\"./autre.md\""));
+        assert!(r.html.contains("src=\"images/x.png\""));
+    }
+
+    #[test]
+    fn markup_produced_by_the_renderer_survives() {
+        let r = render("# ==Titre==\n\nTexte avec `du code`.\n");
+        // ancre, surlignage et classes syntect : tout ce que le front
+        // consomme doit être encore là après le passage dans ammonia.
+        assert!(r.html.contains("id=\"titre\""));
+        assert!(r.html.contains("<mark>Titre</mark>"));
+        assert!(r.html.contains("srcmap"));
+        assert!(r.html.contains("data-line=\"1\""));
     }
 }

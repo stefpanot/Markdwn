@@ -32,6 +32,11 @@ tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 pulldown-cmark = "0.13"
+# Sanification du HTML rendu : un document Markdown peut contenir du HTML brut,
+# que pulldown-cmark laisse passer tel quel — sans ce filtre, un fichier .md
+# hostile exécuterait du JS dans la webview de l'aperçu. La CSP est le second
+# étage de la même défense.
+ammonia = "4"
 # Coloration des blocs de code au moment du rendu. `default-fancy` inclurait
 # aussi thèmes, plist/yaml et dump-create, inutiles ici : la sortie est en
 # classes CSS, pas en styles en ligne. `regex-fancy` est le moteur 100 % Rust
