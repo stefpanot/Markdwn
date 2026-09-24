@@ -127,7 +127,20 @@ if (-not $vsShell) {
     throw "Launch-VsDevShell.ps1 introuvable. La charge de travail « Développement Desktop en C++ » de Visual Studio est-elle installée ?"
 }
 
-& $vsShell.FullName -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Null
+# Launch-VsDevShell.ps1 résout vswhere via %ProgramFiles(x86)%, une variable
+# MACHINE que certaines machines perdent — le chemin se résout alors en
+# « \Microsoft Visual Studio\Installer\vswhere.exe » et tout s'écroule. On
+# localise vswhere soi-même et on le passe explicitement (-VsWherePath).
+$vsWhere = Get-ChildItem `
+    'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe',
+    'C:\Program Files\Microsoft Visual Studio\Installer\vswhere.exe' `
+    -ErrorAction SilentlyContinue | Select-Object -First 1
+
+if (-not $vsWhere) {
+    throw "vswhere.exe introuvable. Visual Studio est-il installé ?"
+}
+
+& $vsShell.FullName -Arch amd64 -HostArch amd64 -SkipAutomaticLocation -VsWherePath $vsWhere.FullName | Out-Null
 if (-not (Get-Command link.exe -ErrorAction SilentlyContinue)) {
     throw "link.exe reste introuvable après le chargement de l'environnement MSVC."
 }
