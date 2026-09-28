@@ -89,6 +89,14 @@
   >
     <Icon name={app.theme === "dark" ? "moon" : "sun"} size={16} />
   </button>
+  <button
+    class="icon-btn"
+    onclick={() => (app.settingsOpen = !app.settingsOpen)}
+    aria-pressed={app.settingsOpen}
+    title="Paramètres — Ctrl+,"
+  >
+    <Icon name="settings" size={16} width={1.4} />
+  </button>
 </div>
 
 <style>

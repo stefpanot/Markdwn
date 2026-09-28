@@ -102,10 +102,12 @@
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
   --font-read: "Literata", Georgia, "Times New Roman", serif;
 
-  /* Éditeur : la hauteur de ligne est un multiple exact, le calage des
-     tableaux ASCII en dépend. */
+  /* Éditeur : la hauteur de ligne suit le corps pour préserver le ratio exact
+     (calage des tableaux ASCII quelle que soit la taille choisie). Le corps
+     est un réglage (cf. Paramètres → Édition), posé en variable inline sur
+     .app ; cette valeur n'est que le défaut. */
   --editor-size: 14.5px;
-  --editor-leading: 25.8px;
+  --editor-leading: calc(var(--editor-size) * 1.779);
 }
 
 * {

@@ -103,6 +103,8 @@ class AppState {
       « full » occupe toute la largeur, bon pour les tableaux et le code. */
   readingSize = $state(17);
   readingWidth = $state<"centered" | "full">("centered");
+  /** Corps du texte d'édition, en px — voir --editor-size. */
+  editorSize = $state(14.5);
   syncScroll = $state(true);
   restoreLastFolder = $state(true);
   /** Vérification silencieuse des mises à jour au lancement. */
@@ -131,6 +133,7 @@ class AppState {
       mode: this.mode,
       readingSize: this.readingSize,
       readingWidth: this.readingWidth,
+      editorSize: this.editorSize,
       sidebarVisible: this.sidebarVisible,
       syncScroll: this.syncScroll,
       lastFolder: this.folderPath,
@@ -143,6 +146,7 @@ class AppState {
     if (c.theme === "dark" || c.theme === "light") this.theme = c.theme;
     if (c.mode === "read" || c.mode === "split" || c.mode === "zen") this.mode = c.mode;
     if (Number.isFinite(c.readingSize)) this.readingSize = c.readingSize;
+    if (Number.isFinite(c.editorSize)) this.editorSize = c.editorSize;
     if (c.readingWidth === "centered" || c.readingWidth === "full") {
       this.readingWidth = c.readingWidth;
     }
@@ -157,6 +161,7 @@ class AppState {
     this.mode = "split";
     this.readingSize = 17;
     this.readingWidth = "centered";
+    this.editorSize = 14.5;
     this.sidebarVisible = true;
     this.syncScroll = true;
     this.restoreLastFolder = true;

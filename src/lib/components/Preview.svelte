@@ -107,20 +107,76 @@
     return true;
   }
 
+  /** Défilement synchronisé : interpolation PROPORTIONNELLE entre les
+      marqueurs srcmap qui encadrent la ligne, au lieu de caler le bloc
+      précédent en haut de vue. Le rendu étant plus haut ou plus bas que la
+      source (titres, tableaux, blocs de code), caler le bloc donnait des
+      sauts et un décalage croissant le long du document ; interpoler entre
+      le bloc en cours et le suivant garde les deux vues sur la même zone. */
   export function scrollToLine(line: number) {
     if (!scroller) return;
-    let target: HTMLElement | undefined;
-    for (const m of markers()) {
-      if ((Number(m.dataset.line) || 1) > line) break;
-      target = m;
-    }
-    if (!target) {
+    const ms = markers();
+    if (ms.length === 0) {
       scroller.scrollTop = 0;
       return;
     }
-    const delta = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-    scroller.scrollTop += delta;
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    // Position du marqueur dans le contenu, indépendante du défilement courant.
+    const contentOffset = (m: HTMLElement) =>
+      m.getBoundingClientRect().top - scrollerTop + scroller.scrollTop;
+    // Premier marqueur dont la ligne DÉPASSE la cible : on interpole entre
+    // le précédent (encore au-dessus) et celui-là.
+    let i = 0;
+    while (i < ms.length && (Number(ms[i].dataset.line) || 1) <= line) i++;
+    let target: number;
+    if (i === 0) {
+      target = 0;
+    } else if (i >= ms.length) {
+      target = contentOffset(ms[ms.length - 1]);
+    } else {
+      const a = ms[i - 1];
+      const b = ms[i];
+      const la = Number(a.dataset.line) || 1;
+      const lb = Number(b.dataset.line) || la + 1;
+      const frac = lb > la ? Math.min(Math.max((line - la) / (lb - la), 0), 1) : 0;
+      target = contentOffset(a) + (contentOffset(b) - contentOffset(a)) * frac;
+    }
+    const max = Math.max(scroller.scrollHeight - scroller.clientHeight, 0);
+    scroller.scrollTop = Math.min(Math.max(target, 0), max);
   }
+
+  /* ---------- surlignage de la sélection de l'éditeur ---------- */
+  // Plage mémorisée (non réactive : appliquée à la main après chaque rendu).
+  let selFrom = 0;
+  let selTo = 0;
+
+  /** Surligne dans l'aperçu les blocs dont la ligne de départ tombe dans la
+      sélection de l'éditeur. (0, 0) efface. Réappliqué après chaque rendu,
+      donc le HTML régénéré ne fait pas disparaître le surlignage. */
+  export function highlightSelection(fromLine: number, toLine: number) {
+    selFrom = Math.min(fromLine, toLine);
+    selTo = Math.max(fromLine, toLine);
+    applyHighlight();
+  }
+
+  function applyHighlight() {
+    if (!scroller) return;
+    for (const m of markers()) {
+      // Chaque marqueur précède immédiatement le bloc de premier niveau qu'il
+      // ouvre : c'est lui qui porte le surlignage.
+      let block = m.nextElementSibling as HTMLElement | null;
+      if (!block || block.classList.contains("srcmap")) continue;
+      const line = Number(m.dataset.line) || 1;
+      const on = selFrom > 0 && selTo > selFrom && line >= selFrom && line <= selTo;
+      block.classList.toggle("srcsel", on);
+    }
+  }
+
+  // Réappliquer après chaque nouveau rendu (le HTML a été remplacé entre-temps).
+  $effect(() => {
+    void html;
+    applyHighlight();
+  });
 </script>
 
 <div
@@ -144,6 +200,9 @@
     overflow-x: hidden;
     background: var(--surface-preview);
     user-select: text;
+    /* La roulette ne doit jamais enchaîner sur un autre panneau scrollable
+       (plan, arborescence) quand l'aperçu est en haut ou en bas de course. */
+    overscroll-behavior: contain;
   }
   .preview.read {
     background: transparent;
@@ -198,6 +257,18 @@
     display: block;
     height: 0;
     overflow: hidden;
+  }
+
+  /* Blocs couverts par la sélection de l'éditeur : un halo discret autour du
+     bloc (box-shadow, donc sans reflow) pour repérer la zone éditée dans
+     l'aperçu. */
+  .doc :global(.srcsel) {
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--accent) 12%, transparent);
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--accent) 12%, transparent);
+    transition:
+      background 120ms ease,
+      box-shadow 120ms ease;
   }
 
   .doc :global(h1) {

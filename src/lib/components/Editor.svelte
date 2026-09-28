@@ -9,6 +9,14 @@
     indentWithTab,
     undo as cmUndo,
     redo as cmRedo,
+    cursorPageUp,
+    cursorPageDown,
+    selectPageUp,
+    selectPageDown,
+    cursorDocStart,
+    cursorDocEnd,
+    selectDocStart,
+    selectDocEnd,
   } from "@codemirror/commands";
   import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
   import { languages } from "@codemirror/language-data";
@@ -18,8 +26,10 @@
   interface Props {
     /** Remonte la première ligne visible, pour la synchro de scroll. */
     onScrollLine?: (line: number) => void;
+    /** Remonte les lignes de la sélection courante (surlignage dans l'aperçu). */
+    onSelect?: (fromLine: number, toLine: number) => void;
   }
-  let { onScrollLine }: Props = $props();
+  let { onScrollLine, onSelect }: Props = $props();
 
   let host: HTMLDivElement;
   let view: EditorView | undefined;
@@ -43,6 +53,21 @@
       // Tab indente la ligne ou la sélection — c'est ce qui décale une puce
       // markdown ; Maj+Tab désindente.
       keymap.of([indentWithTab, { key: "Shift-Tab", run: indentLess }]),
+      // Navigation standard d'éditeur, explicitée AVANT le keymap par défaut :
+      // PageUp/PageDown doivent toujours servir le document, jamais le plan
+      // (le focus peut avoir été laissé sur un bouton du plan par un clic).
+      // Mod+PageUp/PageDown sautent en haut / en bas du document, comme le
+      // demande la navigation habituelle sous Windows.
+      keymap.of([
+        { key: "PageUp", run: cursorPageUp, preventDefault: true },
+        { key: "Shift-PageUp", run: selectPageUp, preventDefault: true },
+        { key: "PageDown", run: cursorPageDown, preventDefault: true },
+        { key: "Shift-PageDown", run: selectPageDown, preventDefault: true },
+        { key: "Mod-PageUp", run: cursorDocStart, preventDefault: true },
+        { key: "Mod-PageDown", run: cursorDocEnd, preventDefault: true },
+        { key: "Shift-Mod-PageUp", run: selectDocStart, preventDefault: true },
+        { key: "Shift-Mod-PageDown", run: selectDocEnd, preventDefault: true },
+      ]),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       editorTheme,
@@ -57,6 +82,15 @@
           const line = u.state.doc.lineAt(head);
           app.cursorLine = line.number;
           app.cursorCol = head - line.from + 1;
+        }
+        // Surlignage de la sélection dans l'aperçu : lignes de l'ancre à la
+        // tête (dans l'ordre du document). Sélection vide = on efface.
+        if (u.selectionSet && onSelect) {
+          const { from, to } = u.state.selection.main;
+          if (from === to) onSelect(0, 0);
+          else {
+            onSelect(u.state.doc.lineAt(from).number, u.state.doc.lineAt(to).number);
+          }
         }
       }),
     ];
@@ -92,7 +126,10 @@
 
   /** Changer de document remplace le contenu sans recréer l'éditeur.
       Le garde sort AVANT de lire `content`, pour que la frappe ne fasse pas de
-      cet effet un dépendant du texte. */
+      cet effet un dépendant du texte. Le focus suit : ouvrir un document — par
+      onglet, arborescence ou « fichier suivant » — doit permettre de taper et
+      de naviguer (PageUp, roulette) immédiatement, sans recliquer dans le
+      texte au préalable. */
   $effect(() => {
     const doc = app.active;
     if (!view || !doc || doc.id === loadedId) return;
@@ -101,6 +138,7 @@
       selection: { anchor: 0 },
     });
     loadedId = doc.id;
+    view.focus();
   });
 
   export function scrollToLine(line: number) {

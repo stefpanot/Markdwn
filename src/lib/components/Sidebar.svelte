@@ -92,6 +92,8 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+    /* La roulette sur l'arborescence ne doit pas enchaîner ailleurs. */
+    overscroll-behavior: contain;
   }
 
   .empty {

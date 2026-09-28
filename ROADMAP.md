@@ -10,6 +10,15 @@ vit en Rust ; la mise en page reste dans la webview.
 
 ## Livré récemment
 
+- Ergonomie de l'édition : navigation clavier standard (PageUp/PageDown servent
+  le texte, jamais le plan ; Mod+PageUp/PageDown sautent en haut/bas du
+  document), focus éditeur garanti à l'ouverture d'un document et après un clic
+  dans le plan. Corps d'édition réglable et persisté (Paramètres → Édition) ;
+  coloration syntaxique Markdown rehaussée (titres et liens en accent, URL et
+  code en terre cuite). Synchronisation Split par interpolation proportionnelle
+  entre les blocs — fini les sauts — et surlignage de la sélection dans
+  l'aperçu. Roulette cantonnée à son panneau (`overscroll-behavior`).
+
 - « Enregistrer sous… » (`Ctrl+Shift+S`) : copie du document vers un autre
   chemin via le dialogue natif ; l'onglet suit la copie, l'original reste
   intact. Pur travail de webview (`write_document` existant, aucun Rust

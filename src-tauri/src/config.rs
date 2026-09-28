@@ -33,6 +33,8 @@ pub struct Config {
     pub reading_size: u32,
     /// "centered" | "full"
     pub reading_width: String,
+    /// Corps du texte d'édition, en px (13 / 14.5 / 16 / 18 côté UI).
+    pub editor_size: f64,
     pub sidebar_visible: bool,
     pub sync_scroll: bool,
     /// Dernier dossier ouvert, réouvert au démarrage si `restore_last_folder`.
@@ -50,6 +52,7 @@ impl Default for Config {
             mode: "split".into(),
             reading_size: 17,
             reading_width: "centered".into(),
+            editor_size: 14.5,
             sidebar_visible: true,
             sync_scroll: true,
             last_folder: String::new(),
@@ -196,6 +199,8 @@ mod tests {
         assert_eq!(cfg.mode, "zen");
         assert_eq!(cfg.theme, Config::default().theme);
         assert_eq!(cfg.reading_size, Config::default().reading_size);
+        // Champ ajouté après les premières configs : défaut sans migration.
+        assert_eq!(cfg.editor_size, 14.5);
         assert!(warn.is_none());
         std::fs::remove_dir_all(&d).unwrap();
     }

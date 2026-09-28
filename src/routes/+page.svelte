@@ -164,6 +164,11 @@
     editor?.scrollToLine(line);
   }
 
+  /** Surlignage de la sélection dans l'aperçu (0,0 = sélection vide). */
+  function fromEditorSelect(fromLine: number, toLine: number) {
+    preview?.highlightSelection(fromLine, toLine);
+  }
+
   /* ---------- historique entre documents ---------- */
   let history = $state<string[]>([]);
   let hIndex = $state(-1);
@@ -834,6 +839,9 @@
     if (app.mode === "read") preview?.scrollToLine(line);
     else {
       editor?.scrollToLine(line);
+      // Le clic dans le plan laisse le focus sur son bouton : sans ce rappel,
+      // PageUp/PageDown continueraient de défiler le plan au lieu du texte.
+      editor?.focus();
       if (app.syncScroll) preview?.scrollToLine(line);
     }
   }
@@ -1011,7 +1019,11 @@
 
 <svelte:window onkeydown={onKeydown} oncontextmenu={onContextMenu} />
 
-<div class="app" class:zen={app.mode === "zen" && !!app.active}>
+<div
+  class="app"
+  class:zen={app.mode === "zen" && !!app.active}
+  style:--editor-size="{app.editorSize}px"
+>
   {#if !app.active}
     <!-- Aucun document : écran d'accueil, sans onglet fantôme. La barre de
          dossiers reste là si un dossier est ouvert, pour choisir un fichier. -->
@@ -1161,7 +1173,7 @@
               </button>
             {/if}
           </div>
-          <Editor bind:this={editor} onScrollLine={fromEditor} />
+          <Editor bind:this={editor} onScrollLine={fromEditor} onSelect={fromEditorSelect} />
         </div>
         <div class="splitter"></div>
         <Preview
@@ -1341,7 +1353,6 @@
   .zen-column :global(.editor) {
     flex: 0 1 780px;
     background: transparent;
-    font-size: 16px;
   }
   .zen-column :global(.cm-editor) {
     background: transparent;

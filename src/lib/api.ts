@@ -56,6 +56,7 @@ export interface AppConfig {
   mode: "read" | "split" | "zen";
   readingSize: number;
   readingWidth: "centered" | "full";
+  editorSize: number;
   sidebarVisible: boolean;
   syncScroll: boolean;
   lastFolder: string;

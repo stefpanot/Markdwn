@@ -13,6 +13,7 @@
   let panel: HTMLDivElement;
 
   const sizes = [15, 17, 19, 21];
+  const editorSizes = [13, 14.5, 16, 18];
 
   // Le dossier, pas le fichier : c'est ce qu'on veut révéler.
   const configDir = $derived(app.configPath.replace(/[\\/][^\\/]+$/, ""));
@@ -69,6 +70,23 @@
           <div class="seg">
             {#each sizes as s (s)}
               <button class:on={app.readingSize === s} onclick={() => (app.readingSize = s)}>
+                {s}
+              </button>
+            {/each}
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h3>Édition</h3>
+        <div class="row">
+          <span class="lab">
+            Taille du texte
+            <span class="sub">corps de l'éditeur, en pixels</span>
+          </span>
+          <div class="seg">
+            {#each editorSizes as s (s)}
+              <button class:on={app.editorSize === s} onclick={() => (app.editorSize = s)}>
                 {s}
               </button>
             {/each}

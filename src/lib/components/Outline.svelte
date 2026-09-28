@@ -67,6 +67,7 @@
     flex-shrink: 0;
     padding: 30px 20px 20px 26px;
     overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .head {
@@ -94,6 +95,7 @@
     gap: 2px;
     overflow-y: auto;
     min-height: 0;
+    overscroll-behavior: contain;
   }
 
   .item {
