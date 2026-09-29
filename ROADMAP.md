@@ -10,6 +10,15 @@ vit en Rust ; la mise en page reste dans la webview.
 
 ## Livré récemment
 
+- Fix CSP Tauri (suite à l'issue #4) : la réécriture automatique de la CSP
+  retirait `'unsafe-inline'` de `style-src`, tuant en build installé — et
+  seulement là — les styles inline que CodeMirror injecte au runtime : thème
+  (police, taille réglable, sélection), coloration syntaxique, garde-roulette.
+  Invisible en dev et en HTTP nu, d'où un diagnostic long posé à distance via
+  CDP WebView2 sur l'app installée. Correctif :
+  `dangerousDisableAssetCspModification: ["style-src"]` — les scripts gardent
+  leurs nonces Tauri, le HTML rendu reste filtré par ammonia.
+
 - Ergonomie de l'édition : navigation clavier standard (PageUp/PageDown servent
   le texte, jamais le plan ; Mod+PageUp/PageDown sautent en haut/bas du
   document), focus éditeur garanti à l'ouverture d'un document et après un clic
