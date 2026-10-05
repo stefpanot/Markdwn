@@ -1,26 +1,42 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
   import ModeSwitch from "./ModeSwitch.svelte";
+  import FormatButtons from "./FormatButtons.svelte";
+  import ContextMenu from "./ContextMenu.svelte";
   import { app } from "$lib/state.svelte";
+  import type { MenuItem } from "$lib/menu";
+  import type { EditAction, FormatKind } from "$lib/formats";
 
   interface Props {
     onOpenFolder: () => void;
     onOpenFile: () => void;
     onSave: () => void;
-    onFormat: (
-      kind:
-        | "bold"
-        | "italic"
-        | "code"
-        | "codeblock"
-        | "strike"
-        | "mark"
-        | "link"
-        | "list"
-        | "quote",
-    ) => void;
+    onFormat: (kind: FormatKind) => void;
+    /** Couper / copier / coller / tout sélectionner (menu du bouton ☺). */
+    onEditAction: (action: EditAction) => void;
   }
-  let { onOpenFolder, onOpenFile, onSave, onFormat }: Props = $props();
+  let { onOpenFolder, onOpenFile, onSave, onFormat, onEditAction }: Props = $props();
+
+  /* Menu d'actions d'édition, ouvert par le bouton smiley : équivalent du
+     menu contextuel (le menu natif ne peut pas être déclenché par code). */
+  let editMenu: { x: number; y: number } | null = $state(null);
+
+  function openEditMenu(e: MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    editMenu = { x: r.right - 208, y: r.bottom + 6 };
+  }
+
+  const editItems: MenuItem[] = [
+    { label: "Couper", keys: "Ctrl+X", run: () => onEditAction("cut") },
+    { label: "Copier", keys: "Ctrl+C", run: () => onEditAction("copy") },
+    { label: "Coller", keys: "Ctrl+V", run: () => onEditAction("paste") },
+    {
+      label: "Tout sélectionner",
+      keys: "Ctrl+A",
+      separatorBefore: true,
+      run: () => onEditAction("selectAll"),
+    },
+  ];
 </script>
 
 <div class="bar">
@@ -36,33 +52,7 @@
 
   <div class="divider"></div>
 
-  <button class="icon-btn" onclick={() => onFormat("bold")} title="Gras">
-    <Icon name="bold" size={16} width={1.6} />
-  </button>
-  <button class="icon-btn" onclick={() => onFormat("italic")} title="Italique">
-    <Icon name="italic" size={16} />
-  </button>
-  <button class="icon-btn" onclick={() => onFormat("link")} title="Lien">
-    <Icon name="link" size={16} />
-  </button>
-  <button class="icon-btn" onclick={() => onFormat("code")} title="Code inline">
-    <Icon name="code" size={16} />
-  </button>
-  <button class="icon-btn" onclick={() => onFormat("codeblock")} title="Bloc de code — ```langage">
-    <Icon name="code-block" size={16} width={1.4} />
-  </button>
-  <button class="icon-btn" onclick={() => onFormat("strike")} title="Barré">
-    <Icon name="strike" size={16} width={1.4} />
-  </button>
-  <button class="icon-btn" onclick={() => onFormat("mark")} title="Surligner">
-    <Icon name="mark" size={16} width={1.4} />
-  </button>
-  <button class="icon-btn" onclick={() => onFormat("list")} title="Liste">
-    <Icon name="list" size={16} />
-  </button>
-  <button class="icon-btn" onclick={() => onFormat("quote")} title="Citation">
-    <Icon name="quote" size={16} />
-  </button>
+  <FormatButtons {onFormat} />
 
   <!-- L'espace vide de la barre sert aussi à déplacer la fenêtre. -->
   <div class="spacer" data-tauri-drag-region></div>
@@ -97,7 +87,14 @@
   >
     <Icon name="settings" size={16} width={1.4} />
   </button>
+  <button class="icon-btn" onclick={openEditMenu} title="Actions d'édition — comme le clic droit">
+    <Icon name="smile" size={16} width={1.4} />
+  </button>
 </div>
+
+{#if editMenu}
+  <ContextMenu x={editMenu.x} y={editMenu.y} items={editItems} onClose={() => (editMenu = null)} />
+{/if}
 
 <style>
   .bar {

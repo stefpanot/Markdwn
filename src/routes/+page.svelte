@@ -17,6 +17,8 @@
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import type { MenuItem } from "$lib/menu";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  import FormatButtons from "$lib/components/FormatButtons.svelte";
+  import type { EditAction, FormatKind } from "$lib/formats";
   import CommandPalette, {
     type PaletteCommand,
   } from "$lib/components/CommandPalette.svelte";
@@ -792,18 +794,7 @@
   });
 
   /* ---------- formatage ---------- */
-  function format(
-    kind:
-      | "bold"
-      | "italic"
-      | "code"
-      | "codeblock"
-      | "strike"
-      | "mark"
-      | "link"
-      | "list"
-      | "quote",
-  ) {
+  function format(kind: FormatKind) {
     switch (kind) {
       case "bold":
         editor?.wrap("**");
@@ -832,6 +823,33 @@
       case "quote":
         editor?.prefixLines("> ");
         break;
+    }
+  }
+
+  /* Actions du menu d'édition (bouton smiley) : répliques du menu contextuel.
+     Le presse-papiers vit dans la webview ; navigator.clipboard est permis
+     ici (origine tauri.localhost, geste utilisateur). */
+  function editAction(action: EditAction) {
+    if (!editor) return;
+    if (action === "cut") {
+      const text = editor.selectedText();
+      if (!text) return;
+      navigator.clipboard.writeText(text).catch(() => {});
+      editor.replaceSelection("");
+    } else if (action === "copy") {
+      const text = editor.selectedText();
+      if (!text) return;
+      navigator.clipboard.writeText(text).catch(() => {});
+      editor.focus();
+    } else if (action === "paste") {
+      navigator.clipboard
+        .readText()
+        .then((text) => editor?.replaceSelection(text))
+        .catch(() => {
+          error = "Le collage depuis le menu n'a pas été autorisé — Ctrl+V fonctionne toujours.";
+        });
+    } else {
+      editor.selectAllText();
     }
   }
 
@@ -1081,6 +1099,12 @@
       </button>
     </div>
 
+    <!-- Formatage accessible en Zen aussi, sans casser l'épuration : une
+         pilule discrète en haut, centrée, qui réutilise les mêmes actions. -->
+    <div class="zen-bar">
+      <FormatButtons onFormat={format} />
+    </div>
+
     <div class="body">
       {#if app.sidebarVisible}
         <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} />
@@ -1129,7 +1153,13 @@
         <Preview bind:this={preview} variant="read" onLink={handleLink} />
       </div>
     {:else}
-      <Toolbar onOpenFolder={openFolder} onOpenFile={openFile} onSave={save} onFormat={format} />
+      <Toolbar
+        onOpenFolder={openFolder}
+        onOpenFile={openFile}
+        onSave={save}
+        onFormat={format}
+        onEditAction={editAction}
+      />
       {#if findOpen}
         <FindPanel
           bind:this={findPanel}
@@ -1341,6 +1371,23 @@
   .zen-exit:hover {
     color: var(--fg-1);
     background: var(--hover);
+  }
+
+  /* Pilule de formatage du Zen : centrée en haut, tient dans le décor sans
+     réintroduire de barre complète. */
+  .zen-bar {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-xl);
+    background: var(--chip);
+    box-shadow: inset 0 0 0 1px var(--border);
+    z-index: 3;
   }
 
   .zen-column {

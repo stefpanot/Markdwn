@@ -186,6 +186,13 @@
     return view.state.sliceDoc(from, to);
   }
 
+  /** Sélectionne tout le document (menu d'édition). */
+  export function selectAllText() {
+    if (!view) return;
+    view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+    view.focus();
+  }
+
   /** Remplace la sélection courante (couper, coller). */
   export function replaceSelection(text: string) {
     if (!view) return;

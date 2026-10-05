@@ -42,6 +42,7 @@
     "save": "M3.4 2.8h6.2l3 3v7.4a1 1 0 01-1 1H3.4a1 1 0 01-1-1V3.8a1 1 0 011-1z M5.4 8.6h5.2M5.4 11h3.4",
     "sync": "M3 6.5A4.2 4.2 0 019.6 4.2l2 1.6 M11.6 3.2v2.6H9 M13 9.5A4.2 4.2 0 016.4 11.8l-2-1.6 M4.4 12.8v-2.6H7",
     "clock": "M8 4.2v3.8l2.6 1.6",
+    "smile": "M6 6.4h.02M10 6.4h.02M5.6 9.6a3.8 3.8 0 006.8 0",
   };
 
   const circles: Record<string, [number, number, number][]> = {
@@ -52,6 +53,8 @@
     "locate": [[8, 8, 4.4]],
     // Trou d'axe de l'engrenage « settings ».
     "settings": [[8, 8, 1.9]],
+    // Visage du bouton d'actions d'édition (menu contextuel).
+    "smile": [[8, 8, 5.4]],
   };
 
   const rects: Record<string, [number, number, number, number, number][]> = {
