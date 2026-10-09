@@ -42,8 +42,14 @@ test('la commande synchronise uniquement le projet et détecte les dérives', ()
     const stable = readFileSync(lockPath, 'utf8');
     assert.notEqual(run('set', 'garbage').status, 0);
     assert.equal(readFileSync(lockPath, 'utf8'), stable);
-    writeFileSync(lockPath, before);
+    // Dérive volontaire : le workflow « Prepare release » a DÉJÀ bumpé
+    // l'espace de travail avant de lancer ce test, donc « before » porte la
+    // nouvelle version — le restaurer ne créerait aucune dérive. On écrit une
+    // version sûrement différente de la courante.
+    const drifted = stable.replace(/(name = "markdwn"\r?\nversion = ")[^"]+/, '$10.0.1');
+    writeFileSync(lockPath, drifted);
     assert.notEqual(run('check').status, 0);
+    assert.equal(readFileSync(lockPath, 'utf8'), drifted, "un check en échec ne doit pas réécrire le lock");
     assert.equal(run('set', '0.2.0').status, 0);
     for (const path of ['package.json', 'src-tauri/tauri.conf.json']) {
       const fullPath = join(dir, path);
