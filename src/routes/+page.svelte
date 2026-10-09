@@ -35,6 +35,7 @@
     replaceInDocument,
     resolveLink,
     saveConfig,
+    watchFolder,
     writeDocument,
     type SearchMatch,
   } from "$lib/api";
@@ -94,12 +95,20 @@
           // « Ouvrir avec » : l'action utilisateur d'origine, on l'enregistre.
           await allowPath(initial);
           await openPath(initial);
+          // L'arbre suit le fichier : on charge son dossier parent et on le
+          // révèle, même si la barre de dossiers était masquée (item 5).
+          await revealActiveInSidebar();
         }
         await listen<string>("open-file", async (e) => {
           // Double-clic Windows dérouté par le plugin single-instance.
           await allowPath(e.payload);
           await openPath(e.payload);
+          await revealActiveInSidebar();
         });
+        // Watcher Rust (K2.8) : toute modification sur disque dans le dossier
+        // ouvert débouche sur un refresh débouncé, sans jamais refermer
+        // l'arborescence. Hors Tauri, la commande n'existe pas : ignoré.
+        await listen<string>("folder-changed", () => scheduleFolderRefresh());
       } catch {
         /* Hors Tauri : ni argument ni événement à traiter. */
       }
@@ -249,10 +258,50 @@
     }
   }
 
+  /** Dernière racine transmise au watcher : on ne (re)lance la surveillance
+      que quand elle change — jamais pour un simple refresh après enregistrement. */
+  let watchedRoot = "";
+
+  /** Relit le dossier depuis le disque. Changement de racine : l'état de
+      l'arbre précédent est oublié ; simple refresh : l'expansion survit et
+      les dossiers dépliés se rechargent (les données sont remplacées sans
+      jamais refermer l'arborescence). */
   async function refreshFolder(path: string) {
-    app.folderEntries = await listDir(path);
-    app.folderFiles = await listMarkdownTree(path);
+    const [entries, files] = await Promise.all([listDir(path), listMarkdownTree(path)]);
+    if (path !== app.folderPath) app.resetTree();
+    else app.invalidateTree();
+    app.folderEntries = entries;
+    app.folderFiles = files;
     app.folderPath = path;
+    // La surveillance suit la racine courante. Échec silencieux : le bouton
+    // refresh et le focus de la fenêtre restent comme filets de sécurité.
+    if (path !== watchedRoot) {
+      watchedRoot = path;
+      watchFolder(path).catch(() => {});
+    }
+  }
+
+  /* Refresh débouncé (~300 ms) : le watcher Rust émet par rafales quand un
+     outil externe touche plusieurs fichiers d'un coup. Le débounce couvre
+     aussi le retour de focus de la fenêtre. */
+  let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  function scheduleFolderRefresh() {
+    if (!app.folderPath) return;
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      const path = app.folderPath;
+      if (path) refreshFolder(path).catch(() => {});
+    }, 300);
+  }
+
+  /** Bouton « rafraîchir » de la sidebar : immédiat, sans délai de debounce. */
+  function refreshNow() {
+    const path = app.folderPath;
+    if (path) refreshFolder(path).catch(() => {});
+  }
+
+  function onWindowFocus() {
+    scheduleFolderRefresh();
   }
 
   /** Révèle le document actif dans la barre latérale. Hors du dossier ouvert
@@ -275,6 +324,78 @@
     app.sidebarVisible = true;
     app.revealPath = doc.path;
     app.revealTick += 1;
+  }
+
+  /* Suivi du document actif (réglable dans Paramètres) : à chaque changement
+     d'onglet/document, l'arbre déplie les ancêtres, défile et surligne —
+     mais UNIQUEMENT si le fichier vit sous le dossier ouvert. Hors de là,
+     changer de dossier tout seul serait trop intrusif : le bouton « Révéler
+     dans la barre latérale » reste le geste manuel. */
+  $effect(() => {
+    const path = app.active?.path;
+    if (!path || !app.followActive) return;
+    if (!isPathUnder(path, app.folderPath)) return;
+    app.revealPath = path;
+    app.revealTick += 1;
+  });
+
+  /* ----- splitter éditeur/aperçu (mode Split) : drag + ratio persisté ----- */
+  let splitAreaEl = $state<HTMLDivElement>();
+  const SPLIT_MIN = 0.2;
+  const SPLIT_MAX = 0.8;
+
+  function startSplitDrag(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const splitter = e.currentTarget as HTMLElement;
+    splitter.setPointerCapture(e.pointerId);
+    document.body.style.cursor = "col-resize";
+
+    const onMove = (ev: PointerEvent) => {
+      // Ratio dans l'espace éditeur+aperçu, indépendant de la présence de
+      // la barre de dossiers : la mesure se fait sur la zone elle-même.
+      const box = splitAreaEl!.getBoundingClientRect();
+      const r = (ev.clientX - box.left) / box.width;
+      app.splitRatio = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, r));
+    };
+    const onUp = () => {
+      document.body.style.cursor = "";
+      splitter.removeEventListener("pointermove", onMove);
+      splitter.removeEventListener("pointerup", onUp);
+      splitter.removeEventListener("pointercancel", onUp);
+    };
+    splitter.addEventListener("pointermove", onMove);
+    splitter.addEventListener("pointerup", onUp);
+    splitter.addEventListener("pointercancel", onUp);
+  }
+
+  /* ----- rail « Sur cette page » (mode Lecture) : drag de largeur ----- */
+  const TOC_MIN = 200;
+  const TOC_MAX = 420;
+
+  function startTocDrag(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    document.body.style.cursor = "col-resize";
+
+    const onMove = (ev: PointerEvent) => {
+      // Le rail est ancré à droite : sa largeur se mesure depuis le bord
+      // droit de la fenêtre d'application.
+      const box = handle.parentElement!.getBoundingClientRect();
+      const w = box.right - ev.clientX;
+      app.tocWidth = Math.round(Math.min(TOC_MAX, Math.max(TOC_MIN, w)));
+    };
+    const onUp = () => {
+      document.body.style.cursor = "";
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
   }
 
   async function openFolder() {
@@ -1035,12 +1156,14 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} oncontextmenu={onContextMenu} />
+<svelte:window onkeydown={onKeydown} oncontextmenu={onContextMenu} onfocus={onWindowFocus} />
 
 <div
   class="app"
   class:zen={app.mode === "zen" && !!app.active}
   style:--editor-size="{app.editorSize}px"
+  style:--w-sidebar="{app.sidebarWidth}px"
+  style:--w-toc="{app.tocWidth}px"
 >
   {#if !app.active}
     <!-- Aucun document : écran d'accueil, sans onglet fantôme. La barre de
@@ -1056,7 +1179,7 @@
     />
     <div class="body">
       {#if app.sidebarVisible}
-        <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} />
+        <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} onRefresh={refreshNow} />
       {/if}
       <EmptyState
         onOpenFolder={openFolder}
@@ -1107,7 +1230,7 @@
 
     <div class="body">
       {#if app.sidebarVisible}
-        <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} />
+        <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} onRefresh={refreshNow} />
       {/if}
       <div class="zen-column">
         <Editor bind:this={editor} />
@@ -1147,9 +1270,34 @@
         {#if app.sidebarVisible}
           <!-- Le plan vit dans le rail « Sur cette page » en Lecture : la
                sidebar n'affiche que l'arborescence, jamais les deux. -->
-          <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} withOutline={false} />
+          <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} onRefresh={refreshNow} withOutline={false} />
         {/if}
-        <Outline onGoto={gotoLine} variant="rail" activeLine={app.cursorLine} />
+        {#if app.tocCollapsed}
+          <!-- Rail replié : pas de délimitation — le document reprend toute la
+               largeur et rien ne vient couper la lecture. Le bouton de retour
+               est volontairement discret (faible opacité, pleine au survol) et
+               aligné sur la rangée des icônes d'en-tête (38 px). -->
+          <div class="toc-strip">
+            <button
+              class="icon-btn small toc-reopen"
+              onclick={() => (app.tocCollapsed = false)}
+              title="Afficher le plan"
+            >
+              <Icon name="toc-expand" size={14} width={1.4} />
+            </button>
+          </div>
+        {:else}
+          <div class="toc-wrap">
+            <div
+              class="toc-handle"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Largeur de « Sur cette page »"
+              onpointerdown={startTocDrag}
+            ></div>
+            <Outline onGoto={gotoLine} variant="rail" activeLine={app.cursorLine} />
+          </div>
+        {/if}
         <Preview bind:this={preview} variant="read" onLink={handleLink} />
       </div>
     {:else}
@@ -1182,36 +1330,46 @@
       {/if}
       <div class="body">
         {#if app.sidebarVisible}
-          <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} />
+          <Sidebar onOpenFolder={openFolder} onOpenPath={openPath} onGoto={gotoLine} onRefresh={refreshNow} />
         {/if}
-        <div class="editor-col">
-          <!-- Fil d'Ariane : un fichier ouvert hors du dossier en cours ne
-               laissait aucune trace de son emplacement. Le bouton révèle le
-               fichier dans l'arborescence (ou charge son dossier parent). -->
-          <div class="crumbs">
-            <Icon name="file" size={12} width={1.4} />
-            <span class="crumb-path" title={app.active?.path || app.active?.name}>
-              {app.active?.path || app.active?.name}
-            </span>
-            {#if app.active?.path}
-              <button
-                class="icon-btn small"
-                onclick={() => void revealActiveInSidebar()}
-                title="Révéler dans la barre latérale"
-              >
-                <Icon name="locate" size={13} width={1.4} />
-              </button>
-            {/if}
+        <!-- Zone commune éditeur+aperçu : c'est elle qui sert de référence de
+             mesure au drag du splitter, barre de dossiers présente ou non. -->
+        <div class="split-area" bind:this={splitAreaEl}>
+          <div class="editor-col" style:flex-basis="{app.splitRatio * 100}%">
+            <!-- Fil d'Ariane : un fichier ouvert hors du dossier en cours ne
+                 laissait aucune trace de son emplacement. Le bouton révèle le
+                 fichier dans l'arborescence (ou charge son dossier parent). -->
+            <div class="crumbs">
+              <Icon name="file" size={12} width={1.4} />
+              <span class="crumb-path" title={app.active?.path || app.active?.name}>
+                {app.active?.path || app.active?.name}
+              </span>
+              {#if app.active?.path}
+                <button
+                  class="icon-btn small"
+                  onclick={() => void revealActiveInSidebar()}
+                  title="Révéler dans la barre latérale"
+                >
+                  <Icon name="locate" size={13} width={1.4} />
+                </button>
+              {/if}
+            </div>
+            <Editor bind:this={editor} onScrollLine={fromEditor} onSelect={fromEditorSelect} />
           </div>
-          <Editor bind:this={editor} onScrollLine={fromEditor} onSelect={fromEditorSelect} />
+          <div
+            class="splitter"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Répartition éditeur / aperçu"
+            onpointerdown={startSplitDrag}
+          ></div>
+          <Preview
+            bind:this={preview}
+            variant="split"
+            onScrollLine={fromPreview}
+            onLink={handleLink}
+          />
         </div>
-        <div class="splitter"></div>
-        <Preview
-          bind:this={preview}
-          variant="split"
-          onScrollLine={fromPreview}
-          onLink={handleLink}
-        />
       </div>
     {/if}
   {/if}
@@ -1280,17 +1438,93 @@
     min-height: 0;
   }
 
+  .split-area {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+  }
+
+  /* Zone de saisie généreuse (7 px) autour d'une ligne visible de 1 px au
+     survol : le curseur col-resize n'était jusqu'ici qu'une promesse. */
   .splitter {
-    width: 1px;
+    width: 7px;
     flex-shrink: 0;
-    background: var(--border-strong);
     cursor: col-resize;
+    position: relative;
+    z-index: 2;
+  }
+  .splitter::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 3px;
+    width: 1px;
+    height: 100%;
+    background: var(--border-strong);
+    transition: background 120ms ease;
+  }
+  .splitter:hover::after,
+  .splitter:active::after {
+    background: var(--accent);
+  }
+
+  /* ---------- rail « Sur cette page » (mode Lecture) ---------- */
+  .toc-wrap {
+    display: flex;
+    flex-shrink: 0;
+    min-height: 0;
+  }
+  .toc-handle {
+    width: 6px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    position: relative;
+    z-index: 2;
+  }
+  .toc-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 3px;
+    width: 1px;
+    height: 100%;
+    background: var(--border-strong);
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .toc-handle:hover::after,
+  .toc-handle:active::after {
+    opacity: 1;
+  }
+  /* Rail replié : simple emplacement pour le bouton de retour, sans bordure
+     ni fond — rien qui vienne couper la lecture. */
+  .toc-strip {
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    /* Aligné sur la rangée d'en-tête (38 px) avec un bouton de 22 px. */
+    padding-top: 8px;
+    width: 34px;
+  }
+  .toc-reopen {
+    color: var(--fg-4);
+    opacity: 0.45;
+    transition:
+      opacity 150ms ease,
+      background 150ms ease;
+  }
+  .toc-reopen:hover {
+    opacity: 1;
   }
 
   /* La colonne éditeur embarque son fil d'Ariane : la barre ne porte que sur
-     l'éditeur, pas sur la barre latérale ni l'aperçu. */
+     l'éditeur, pas sur la barre latérale ni l'aperçu. Le ratio vient de
+     flex-basis (posé en inline depuis splitRatio) : grow/shrink à 0 pour que
+     le drag du splitter soit la seule source de vérité. */
   .editor-col {
-    flex: 1;
+    flex: 0 0 auto;
     min-width: 0;
     min-height: 0;
     display: flex;

@@ -49,7 +49,9 @@ export const listDir = (path: string) =>
 export const listMarkdownTree = (path: string) =>
   invoke<string[]>("list_markdown_tree", { path });
 
-/** Miroir exact de `config::Config` côté Rust (serde en camelCase). */
+/** Miroir exact de `config::Config` côté Rust (serde en camelCase). Les
+    champs panneaux (K2.8) sont optionnels : les configs écrites avant eux
+    ne les portent pas, et le front retombe sur ses défauts. */
 export interface AppConfig {
   schemaVersion: number;
   theme: "dark" | "light";
@@ -62,6 +64,13 @@ export interface AppConfig {
   lastFolder: string;
   restoreLastFolder: boolean;
   autoUpdate: boolean;
+  sidebarWidth?: number;
+  tocCollapsed?: boolean;
+  tocWidth?: number;
+  splitRatio?: number;
+  outlineCollapsed?: boolean;
+  outlineHeight?: number;
+  followActive?: boolean;
 }
 
 export interface LoadedConfig {
@@ -127,3 +136,8 @@ export const replaceInDocument = (
 /** Fichier passé sur la ligne de commande au lancement (association Windows
  * « ouvrir avec »). `null` après le premier appel ou si rien n'a été passé. */
 export const consumeInitialFile = () => invoke<string | null>("consume_initial_file");
+
+/** Surveille un dossier (et son sous-arbre) et émet « folder-changed » dans la
+ * webview à chaque modification pertinente. Une chaîne vide arrête la
+ * surveillance. Relancer sur un autre dossier remplace la précédente. */
+export const watchFolder = (path: string) => invoke<void>("watch_folder", { path });

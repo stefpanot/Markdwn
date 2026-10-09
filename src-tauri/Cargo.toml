@@ -49,6 +49,9 @@ syntect = { version = "5", default-features = false, features = [
 # Les hrefs Markdown sont percent-encodés (les espaces en %20) ; déjà dans
 # l'arbre de dépendances de Tauri, donc gratuit au build.
 percent-encoding = "2"
+# Surveillance du dossier ouvert (K2.8) : les changements sur disque sont
+# poussés à la webview, qui rafraîchit l'arborescence sans la refermer.
+notify = "8"
 
 # Tauri tire ~380 crates, et leurs infos de debug pèsent l'essentiel des
 # quelques gigaoctets de target/. On les coupe pour les DÉPENDANCES seulement :

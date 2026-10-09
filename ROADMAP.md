@@ -52,10 +52,27 @@ vit en Rust ; la mise en page reste dans la webview.
   déroute les double-clics suivants vers l'instance ouverte (événement
   `open-file`). L'installeur demande « pour moi uniquement » ou « pour tous
   les utilisateurs » (`installMode: both`, élévation admin seulement dans
-  le second cas). **Limite connue** : l'instance existante ouvre le fichier
-  mais ne prend pas le focus (reste en arrière-plan) — à corriger avec
-  `unminimize()` + `set_focus()` sur la fenêtre dans le callback
-  single-instance (vigilance : Windows bride le vol de focus, à valider).
+  le second cas). À l'ouverture externe (lancement ou double-clic dérouté),
+  la barre de dossiers charge le dossier parent du fichier et le révèle ;
+  le callback single-instance rappelle la fenêtre au premier plan
+  (`unminimize()` + `set_focus()`). Vigilance : Windows bride le vol de
+  focus (ForegroundLockTimeout) — à valider en conditions réelles.
+
+- Panneaux latéraux (cadrage `design/k2.8-panneaux.md`) : barre de dossiers
+  redimensionnable (180–480 px) et rail « Sur cette page » repliable et
+  redimensionnable (200–420 px) — repliés, ils rendent la place au document
+  et à l'édition. Splitter éditeur/aperçu réellement draggable (ratio
+  persisté, bornes 20–80 %), plan du document en bas de sidebar repliable
+  et à hauteur ajustable (20–70 %). États persistés dans la config (champs
+  optionnels, aucune migration). Arborescence : état d'expansion sorti des
+  composants vers le store (un refresh ne referme plus l'arbre), bouton
+  « rafraîchir », refresh au retour de focus et watcher `notify` en Rust
+  sur le dossier ouvert (événements débouncés ~300 ms côté webview) ;
+  réglage « suivre le document actif » (activé par défaut) : l'arbre révèle
+  le fichier à chaque changement d'onglet quand il est sous le dossier
+  ouvert. **Hors périmètre volontairement** : le watcher ne couvre que
+  l'arbre — recharger/détecter les conflits quand le document OUVERT est
+  modifié sur disque par un autre programme reste à étudier.
 - Images relatives dans l'aperçu, y compris `<img>` en HTML brut.
 - Plan du document : lisible sur les très longs documents, affiché en un seul
   exemplaire par mode.

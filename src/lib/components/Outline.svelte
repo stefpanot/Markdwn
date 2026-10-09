@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { app } from "$lib/state.svelte";
 
   /* Le plan du document n'existe qu'en UN exemplaire à la fois : variant
@@ -26,27 +27,64 @@
   const minLevel = $derived(
     app.headings.length ? Math.min(...app.headings.map((h) => h.level)) : 1,
   );
+
+  /* Repli du rail : le mode Lecture remplace alors le plan par une fine
+     colonne avec un bouton pour le rouvrir (+page.svelte) — le contenu ne
+     doit jamais devenir introuvable. */
+  function collapseRail() {
+    app.tocCollapsed = true;
+  }
 </script>
 
-<div class="outline {variant}">
-  <div class="head">{variant === "rail" ? "Sur cette page" : "Plan du document"}</div>
-
-  {#if app.headings.length === 0}
-    <p class="empty">Aucun titre dans ce document.</p>
-  {:else}
-    <div class="items">
-      {#each app.headings as h (h.line)}
-        <button
-          class="item"
-          class:on={h.slug === currentSlug}
-          style:padding-left="{12 + (h.level - minLevel) * 14}px"
-          onclick={() => onGoto(h.line)}
-          title={h.text}
-        >
-          {h.text}
-        </button>
-      {/each}
+<div
+  class="outline {variant}"
+  style:height={variant === "panel" && !app.outlineCollapsed
+    ? `${app.outlineHeight * 100}%`
+    : undefined}
+>
+  {#if variant === "rail"}
+    <!-- L'en-tête fait exactement la hauteur de celui de la barre de dossiers
+         (38 px) : le bouton de repli s'aligne sur ses icônes quand les deux
+         sont visibles. -->
+    <div class="head rail-head">
+      <span class="rail-title">Sur cette page</span>
+      <button class="icon-btn small" onclick={collapseRail} title="Masquer le plan">
+        <Icon name="toc-collapse" size={14} width={1.4} />
+      </button>
     </div>
+  {:else}
+    <!-- En-tête cliquable : le geste clavier/tactile du repli, pendant du
+         drag de la séparation arbre/plan pour la souris. -->
+    <button
+      class="head panel-head"
+      onclick={() => (app.outlineCollapsed = !app.outlineCollapsed)}
+      aria-expanded={!app.outlineCollapsed}
+    >
+      <span class="twisty" class:open={!app.outlineCollapsed}>
+        <Icon name="chevron-right" size={12} width={1.6} />
+      </span>
+      Plan du document
+    </button>
+  {/if}
+
+  {#if variant === "rail" || !app.outlineCollapsed}
+    {#if app.headings.length === 0}
+      <p class="empty">Aucun titre dans ce document.</p>
+    {:else}
+      <div class="items">
+        {#each app.headings as h (h.line)}
+          <button
+            class="item"
+            class:on={h.slug === currentSlug}
+            style:padding-left="{12 + (h.level - minLevel) * 14}px"
+            onclick={() => onGoto(h.line)}
+            title={h.text}
+          >
+            {h.text}
+          </button>
+        {/each}
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -60,14 +98,12 @@
     flex-shrink: 0;
     border-top: 1px solid var(--border);
     padding: 8px;
-    max-height: 40%;
   }
   .outline.rail {
     width: var(--w-toc);
     flex-shrink: 0;
-    padding: 30px 20px 20px 26px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+    min-height: 0;
+    /* Colonne flex : l'en-tête reste fixe, la liste défile à l'intérieur. */
   }
 
   .head {
@@ -77,9 +113,50 @@
     text-transform: uppercase;
     color: var(--fg-3);
     padding: 4px 10px 10px;
+    flex-shrink: 0;
   }
-  .rail .head {
-    padding: 0 0 14px;
+  .rail-head {
+    height: 38px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 0 14px;
+    border-left: 1px solid var(--border);
+  }
+  .rail-title {
+    flex: 1;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--fg-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    text-align: left;
+    border-radius: var(--r-md);
+  }
+  .panel-head:hover {
+    color: var(--fg-1);
+    background: var(--hover);
+  }
+  .panel-head .twisty {
+    display: flex;
+    color: var(--fg-2);
+    transition: transform 120ms ease;
+  }
+  .panel-head .twisty.open {
+    transform: rotate(90deg);
+  }
+  .icon-btn.small {
+    width: 20px;
+    height: 20px;
+    border-radius: var(--r-sm);
   }
 
   .empty {
@@ -87,6 +164,10 @@
     padding: 0 10px 6px;
     font-size: 12px;
     color: var(--fg-3);
+  }
+  .rail .empty {
+    padding: 2px 10px 6px 14px;
+    border-left: 1px solid var(--border);
   }
 
   .items {
@@ -96,6 +177,13 @@
     overflow-y: auto;
     min-height: 0;
     overscroll-behavior: contain;
+  }
+  /* Dans le rail, la liste est le seul conteneur scrollant : l'en-tête
+     reste visible en permanence. */
+  .rail .items {
+    flex: 1;
+    padding: 2px 10px 16px 14px;
+    border-left: 1px solid var(--border);
   }
 
   .item {

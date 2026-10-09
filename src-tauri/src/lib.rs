@@ -9,6 +9,11 @@ use std::sync::Mutex;
 use tauri::Emitter;
 use tauri::Manager;
 
+/// Réceptacle du watcher de dossier (K2.8) : une seule surveillance à la
+/// fois, celle du dossier racine courant. Remplacer l'option arrête
+/// l'ancienne avant de poser la nouvelle.
+struct FolderWatcher(Mutex<Option<notify::RecommendedWatcher>>);
+
 #[derive(Debug, Serialize)]
 pub struct LoadedConfig {
     config: config::Config,
@@ -223,6 +228,57 @@ fn save_config(app: tauri::AppHandle, config: config::Config) -> Result<(), Stri
     config::save_to(&dir, &config)
 }
 
+/// Un chemin d'événement du watcher doit-il déclencher un refresh de
+/// l'arborescence ? Mêmes filtres que `list_dir` : les fichiers cachés
+/// (`.git`, `.obsidian`…) ne sont pas dans l'arbre, inutile de rafraîchir
+/// pour eux ; seuls comptent les dossiers et les Markdown. Une cible absente
+/// du disque (suppression) passe dès lors qu'elle ne porte pas d'extension —
+/// un répertoire supprimé n'a pas de moyen fiable de se déclarer dossier.
+fn event_is_relevant(p: &Path) -> bool {
+    if file_name_of(p).starts_with('.') {
+        return false;
+    }
+    p.is_dir() || is_markdown(p) || (!p.exists() && p.extension().is_none())
+}
+
+/// Surveille récursivement le dossier ouvert et notifie la webview à chaque
+/// changement pertinent (événement "folder-changed", payload = la racine).
+/// Le front débounc (~300 ms) : notify émet par rafales. Relancer la commande
+/// sur un autre dossier arrête la surveillance précédente ; un chemin vide
+/// arrête tout (fenêtre sans dossier ouvert).
+#[tauri::command]
+fn watch_folder(
+    path: String,
+    watcher: tauri::State<'_, FolderWatcher>,
+    guard: tauri::State<'_, AllowedPaths>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let mut slot = watcher.0.lock().map_err(|e| e.to_string())?;
+    // Toujours libérer l'ancien watcher, quel que soit le sort de la suite.
+    *slot = None;
+    if path.is_empty() {
+        return Ok(());
+    }
+    let base = ensure_allowed(&guard, &path)?;
+    let root = base.to_string_lossy().into_owned();
+    let mut w = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+        let Ok(event) = res else { return };
+        if event.kind.is_access() {
+            return; // lectures, ouvertures : rien qui change l'arbre
+        }
+        if event.paths.iter().any(|p| event_is_relevant(p)) {
+            // La racine est le seul identifiant dont le front a besoin :
+            // c'est elle qu'il relit au complet.
+            let _ = app.emit("folder-changed", root.clone());
+        }
+    })
+    .map_err(|e| format!("watcher : {e}"))?;
+    notify::Watcher::watch(&mut w, &base, notify::RecursiveMode::Recursive)
+        .map_err(|e| format!("{path} : {e}"))?;
+    *slot = Some(w);
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 pub struct ResolvedLink {
     /// Chemin absolu, normalisé lexicalement (les `..` sont résolus).
@@ -426,6 +482,13 @@ pub fn run() {
             if let Some(path) = markdown_arg(args) {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.emit("open-file", path);
+                    // Et on RAPPELLE la fenêtre au premier plan : un double-clic
+                    // « ouvrir avec » sur un .md doit amener l'app devant
+                    // l'explorateur. Limite connue : Windows bride le vol de
+                    // focus (ForegroundLockTimeout) — sans garantie à 100 %,
+                    // mais correctif documenté dans la ROADMAP.
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
                 }
             }
         }))
@@ -438,6 +501,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(initial_file))
         .manage(AllowedPaths(Mutex::new(HashSet::new())))
+        .manage(FolderWatcher(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             render_markdown,
             read_document,
@@ -448,6 +512,7 @@ pub fn run() {
             consume_initial_file,
             list_dir,
             list_markdown_tree,
+            watch_folder,
             resolve_link,
             resolve_asset,
             load_config,
@@ -614,6 +679,29 @@ mod tests {
                 .map(|s| s.replace("mde-walk", &file_name_of(&root)))
                 .collect::<Vec<_>>()
         );
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn watcher_filters_events_like_the_tree_does() {
+        let root = std::env::temp_dir().join(format!("mde-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::write(root.join("a.md"), "a").unwrap();
+        std::fs::write(root.join("b.txt"), "b").unwrap();
+
+        // Ce que l'arbre affiche : dossiers et Markdown.
+        assert!(event_is_relevant(&root.join("docs")));
+        assert!(event_is_relevant(&root.join("a.md")));
+        // Ce qu'il masque : non-Markdown, fichiers cachés.
+        assert!(!event_is_relevant(&root.join("b.txt")));
+        assert!(!event_is_relevant(&root.join(".git")));
+        assert!(!event_is_relevant(&root.join(".obsidian").join("app.json")));
+        // Suppressions : un .md reste identifiable à son extension ; un dossier
+        // supprimé n'existe plus — on accepte au cas où (refresh conservateur).
+        assert!(event_is_relevant(&root.join("absent.md")));
+        assert!(event_is_relevant(&root.join("absent")));
 
         std::fs::remove_dir_all(&root).unwrap();
     }

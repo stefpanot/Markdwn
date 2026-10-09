@@ -42,6 +42,23 @@ pub struct Config {
     pub restore_last_folder: bool,
     /// Vérifier silencieusement les mises à jour au lancement.
     pub auto_update: bool,
+    /* --- Panneaux latéraux (K2.8) : tous optionnels, `#[serde(default)]`
+       au niveau conteneur suffit — les configs anciennes prennent None et le
+       front retombe sur ses défauts. Aucun bump de SCHEMA_VERSION. --- */
+    /// Largeur de la barre de dossiers, en px (bornes 180–480 côté UI).
+    pub sidebar_width: Option<u32>,
+    /// Rail « Sur cette page » replié dans le mode Lecture.
+    pub toc_collapsed: Option<bool>,
+    /// Largeur du rail « Sur cette page », en px (bornes 200–420 côté UI).
+    pub toc_width: Option<u32>,
+    /// Ratio éditeur/aperçu du mode Split (0.2–0.8, défaut 0.5).
+    pub split_ratio: Option<f64>,
+    /// Plan du document replié en bas de la sidebar (Split/Zen).
+    pub outline_collapsed: Option<bool>,
+    /// Hauteur du plan, en fraction de la hauteur de la sidebar (0.2–0.7).
+    pub outline_height: Option<f64>,
+    /// Révéler automatiquement le document actif dans l'arborescence.
+    pub follow_active: Option<bool>,
 }
 
 impl Default for Config {
@@ -58,6 +75,13 @@ impl Default for Config {
             last_folder: String::new(),
             restore_last_folder: true,
             auto_update: true,
+            sidebar_width: None,
+            toc_collapsed: None,
+            toc_width: None,
+            split_ratio: None,
+            outline_collapsed: None,
+            outline_height: None,
+            follow_active: None,
         }
     }
 }
@@ -202,6 +226,33 @@ mod tests {
         // Champ ajouté après les premières configs : défaut sans migration.
         assert_eq!(cfg.editor_size, 14.5);
         assert!(warn.is_none());
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn panel_fields_round_trip_and_default_to_none() {
+        // Champs optionnels ajoutés sans migration : absents du fichier ->
+        // None ; une fois écrits, ils survivent au rechargement.
+        let d = tmpdir("panels");
+        std::fs::write(path_in(&d), r#"{"schemaVersion":1,"mode":"read"}"#).unwrap();
+        let (cfg, warn) = load_from(&d);
+        assert!(warn.is_none());
+        assert_eq!(cfg.sidebar_width, None);
+        assert_eq!(cfg.split_ratio, None);
+        assert_eq!(cfg.follow_active, None);
+
+        let mut cfg = cfg;
+        cfg.sidebar_width = Some(320);
+        cfg.toc_collapsed = Some(true);
+        cfg.toc_width = Some(300);
+        cfg.split_ratio = Some(0.62);
+        cfg.outline_collapsed = Some(true);
+        cfg.outline_height = Some(0.35);
+        cfg.follow_active = Some(false);
+        save_to(&d, &cfg).unwrap();
+        let (back, warn) = load_from(&d);
+        assert!(warn.is_none());
+        assert_eq!(back, cfg);
         std::fs::remove_dir_all(&d).unwrap();
     }
 

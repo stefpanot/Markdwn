@@ -110,6 +110,35 @@ class AppState {
   /** Vérification silencieuse des mises à jour au lancement. */
   autoUpdate = $state(true);
 
+  /* --- Panneaux latéraux (K2.8). Toutes ces valeurs sont posées en
+     variables inline sur .app (--w-sidebar, --w-toc) ou consommées en
+     flex-basis : la mise en page suit sans code supplémentaire. --- */
+  /** Largeur de la barre de dossiers, en px (bornes 180–480). */
+  sidebarWidth = $state(250);
+  /** Rail « Sur cette page » replié (mode Lecture). Replié par défaut : le
+     plan est une aide à la navigation ponctuelle, pas un élément de décor
+     permanent — c'est au lecteur de l'ouvrir quand il en a besoin. */
+  tocCollapsed = $state(true);
+  /** Largeur du rail « Sur cette page », en px (bornes 200–420). */
+  tocWidth = $state(240);
+  /** Ratio éditeur/aperçu du mode Split (bornes 0.2–0.8). */
+  splitRatio = $state(0.5);
+  /** Plan du document replié en bas de la sidebar (Split/Zen). */
+  outlineCollapsed = $state(false);
+  /** Hauteur du plan, en fraction de la sidebar (bornes 0.2–0.7). */
+  outlineHeight = $state(0.4);
+  /** Révéler le document actif dans l'arborescence à chaque changement. */
+  followActive = $state(true);
+
+  /* --- État de l'arborescence, indexé par chemin. Sorti des TreeNode :
+     un refresh (manuel, focus, watcher) remplace les données sans jamais
+     détruire l'expansion, et les dossiers disparus du disque sont simplement
+     oubliés (leur entrée reste en mémoire, inoffensive). --- */
+  /** Dossiers dépliés. */
+  treeExpanded = $state<Record<string, boolean>>({});
+  /** Enfants chargés par dossier ; `undefined` = pas encore lus. */
+  treeChildren = $state<Record<string, DirEntryInfo[]>>({});
+
   /** Faux tant que la configuration n'est pas chargée : il ne faut surtout pas
       réécrire le fichier avec les valeurs par défaut entre-temps. */
   hydrated = $state(false);
@@ -139,6 +168,14 @@ class AppState {
       lastFolder: this.folderPath,
       restoreLastFolder: this.restoreLastFolder,
       autoUpdate: this.autoUpdate,
+      // Optionnels : absents d'une config ancienne, lus quand présents.
+      sidebarWidth: this.sidebarWidth,
+      tocCollapsed: this.tocCollapsed,
+      tocWidth: this.tocWidth,
+      splitRatio: this.splitRatio,
+      outlineCollapsed: this.outlineCollapsed,
+      outlineHeight: this.outlineHeight,
+      followActive: this.followActive,
     };
   }
 
@@ -154,6 +191,15 @@ class AppState {
     this.syncScroll = !!c.syncScroll;
     this.restoreLastFolder = !!c.restoreLastFolder;
     this.autoUpdate = c.autoUpdate !== false;
+    // Champs optionnels : une config ancienne ne les porte pas — clampNum
+    // retombe alors sur le défaut, sans écraser la valeur courante.
+    this.sidebarWidth = clampNum(c.sidebarWidth, 180, 480, 250);
+    if (c.tocCollapsed !== undefined) this.tocCollapsed = !!c.tocCollapsed;
+    this.tocWidth = clampNum(c.tocWidth, 200, 420, 240);
+    this.splitRatio = clampNum(c.splitRatio, 0.2, 0.8, 0.5);
+    if (c.outlineCollapsed !== undefined) this.outlineCollapsed = !!c.outlineCollapsed;
+    this.outlineHeight = clampNum(c.outlineHeight, 0.2, 0.7, 0.4);
+    if (c.followActive !== undefined) this.followActive = !!c.followActive;
   }
 
   resetSettings() {
@@ -166,6 +212,27 @@ class AppState {
     this.syncScroll = true;
     this.restoreLastFolder = true;
     this.autoUpdate = true;
+    this.sidebarWidth = 250;
+    this.tocCollapsed = true;
+    this.tocWidth = 240;
+    this.splitRatio = 0.5;
+    this.outlineCollapsed = false;
+    this.outlineHeight = 0.4;
+    this.followActive = true;
+  }
+
+  /** Oublie tout l'état de l'arbre : changement de dossier racine. L'état
+      d'expansion d'un autre dossier n'a aucune raison de survivre. */
+  resetTree() {
+    this.treeExpanded = {};
+    this.treeChildren = {};
+  }
+
+  /** Marque les enfants chargés comme périmés : au prochain affichage, chaque
+      dossier déplié se relit depuis le disque. L'expansion, elle, survit —
+      c'est tout l'intérêt de cet état indexé par chemin. */
+  invalidateTree() {
+    this.treeChildren = {};
   }
 
   /** Ouvre le document de découverte, à la demande depuis l'écran d'accueil. */
@@ -245,4 +312,12 @@ export function isPathUnder(path: string, dir: string): boolean {
 /** Dossier parent d'un chemin de fichier ("C:\a\b.md" → "C:\a"). */
 export function parentDir(path: string): string {
   return path.replace(/[\\/][^\\/]+$/, "");
+}
+
+/** Borne un nombre lu depuis la config : une main sur le fichier JSON (ou un
+    vieux réglage) ne doit pas pouvoir casser la mise en page. Absent ou non
+    fini : le défaut, sans toucher à la valeur courante. */
+function clampNum(v: number | undefined, min: number, max: number, fallback: number): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
+  return Math.min(max, Math.max(min, v));
 }

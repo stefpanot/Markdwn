@@ -12,6 +12,7 @@
     "file": "M4 2.5h5l3 3v8a1 1 0 01-1 1H5a1 1 0 01-1-1z M9 2.5v3h3",
     "folder": "M2.4 5.2a1 1 0 011-1h2.9l1.3 1.6h5a1 1 0 011 1v5.2a1 1 0 01-1 1H3.4a1 1 0 01-1-1z",
     "chevron-right": "M6 4l4 4-4 4",
+    "chevron-left": "M10 4L6 8l4 4",
     "chevron-down": "M4 6l4 4 4-4",
     "chevron-up": "M4 10l4-4 4 4",
     "search": "M10.2 10.2l3 3",
@@ -66,6 +67,10 @@
     "code-block": [[2.5, 2.8, 11, 10.4, 1.5]],
     "width-centered": [[2.6, 3.4, 10.8, 9.2, 1.5]],
     "width-full": [[2.6, 3.4, 10.8, 9.2, 1.5]],
+    /* Boutons de repli du rail « Sur cette page » : cadre de panneau + chevron
+       dans le sens du geste — le vocabulaire des IDE, pas une flèche nue. */
+    "toc-collapse": [[2.6, 3.4, 10.8, 9.2, 1.5]],
+    "toc-expand": [[2.6, 3.4, 10.8, 9.2, 1.5]],
   };
 
   const extra: Record<string, string> = {
@@ -78,6 +83,8 @@
     "list-dots": "M3.1 4.2h.02M3.1 8h.02M3.1 11.8h.02",
     "sun": "M8 1.6v1.5M8 12.9v1.5M1.6 8h1.5M12.9 8h1.5M3.5 3.5l1 1M11.5 11.5l1 1M12.5 3.5l-1 1M4.5 11.5l-1 1",
     "locate": "M8 1.4v2M8 12.6v2M1.4 8h2M12.6 8h2",
+    "toc-collapse": "M6.6 5.8L9.4 8 6.6 10.2",
+    "toc-expand": "M9.4 5.8L6.6 8l2.8 2.2",
   };
 </script>
 

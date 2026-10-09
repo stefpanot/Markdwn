@@ -134,6 +134,14 @@
             <span class="sub">entre la source et l'aperçu</span>
           </span>
         </label>
+
+        <label class="check">
+          <input type="checkbox" bind:checked={app.followActive} />
+          <span class="lab">
+            Suivre le document actif
+            <span class="sub">déplier et surligner le fichier dans l'arborescence à chaque changement</span>
+          </span>
+        </label>
       </section>
 
       <section>

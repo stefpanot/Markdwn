@@ -12,52 +12,57 @@
   let { entry, depth, onOpen }: Props = $props();
 
   let rowEl: HTMLButtonElement;
-  let expanded = $state(false);
-  let children = $state<DirEntryInfo[]>([]);
-  let loaded = false;
+
+  /* L'expansion et les enfants chargés vivent dans le store, indexés par
+     chemin : un refresh de l'arbre remplace les données sans refermer
+     l'arborescence (item « expansion préservée » du cadrage K2.8). */
+  const expanded = $derived(!!app.treeExpanded[entry.path]);
+  const children = $derived(app.treeChildren[entry.path] ?? []);
 
   const isActive = $derived(!!app.active && app.active.path === entry.path);
 
-  /* Révélation demandée depuis le fil d'Ariane : chaque dossier sur le chemin
-     s'ouvre et charge ses enfants ; le nœud ciblé se défile au centre. Les
-     enfants chargés en retard montent chacun leur tour et poursuivent la
-     chaîne : c'est l'effet du niveau le plus profond qui scrolle. */
+  /** Charge les enfants si le cache du store ne les porte pas déjà. Les
+     appels concurrents (effet de révélation + effet d'expansion) écrivent
+     la même valeur : le store n'en garde qu'une. */
+  async function ensureChildren() {
+    if (app.treeChildren[entry.path] !== undefined) return;
+    try {
+      app.treeChildren[entry.path] = await listDir(entry.path);
+    } catch {
+      app.treeChildren[entry.path] = [];
+    }
+  }
+
+  /* Révélation demandée depuis le fil d'Ariane ou le suivi du document
+     actif : chaque dossier sur le chemin s'ouvre et charge ses enfants ; le
+     nœud ciblé se défile au centre. Les enfants chargés en retard montent
+     chacun leur tour et poursuivent la chaîne : c'est l'effet du niveau le
+     plus profond qui scrolle. */
   $effect(() => {
     const target = app.revealPath;
     const tick = app.revealTick;
     if (!tick || !target) return;
     if (entry.is_dir && isPathUnder(target, entry.path)) {
-      expanded = true;
-      if (!loaded) {
-        listDir(entry.path)
-          .then((c) => {
-            children = c;
-            loaded = true;
-          })
-          .catch(() => {
-            children = [];
-          });
-      }
+      app.treeExpanded[entry.path] = true;
+      void ensureChildren();
     }
     if (entry.path === target) {
       rowEl?.scrollIntoView({ block: "center" });
     }
   });
 
-  async function toggle() {
+  // Dossier déplié (clic ou révélation) : ses enfants doivent exister.
+  $effect(() => {
+    if (entry.is_dir && expanded) void ensureChildren();
+  });
+
+  function toggle() {
     if (!entry.is_dir) {
       onOpen(entry.path);
       return;
     }
-    expanded = !expanded;
-    if (expanded && !loaded) {
-      try {
-        children = await listDir(entry.path);
-        loaded = true;
-      } catch {
-        children = [];
-      }
-    }
+    app.treeExpanded[entry.path] = !expanded;
+    // Le chargement des enfants dépliés est piloté par l'effet ci-dessus.
   }
 </script>
 
