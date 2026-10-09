@@ -47,7 +47,7 @@
          (38 px) : le bouton de repli s'aligne sur ses icônes quand les deux
          sont visibles. -->
     <div class="head rail-head">
-      <span class="rail-title">Sur cette page</span>
+      <span class="rail-title">Plan du document</span>
       <button class="icon-btn small" onclick={collapseRail} title="Masquer le plan">
         <Icon name="toc-collapse" size={14} width={1.4} />
       </button>

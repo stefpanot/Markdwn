@@ -14,6 +14,11 @@ export interface OpenDoc {
   content: string;
   /** Contenu au dernier enregistrement, pour savoir si c'est sale. */
   savedContent: string;
+  /** Offset UTF-16 du curseur, en unités JS/CodeMirror. Tenu à jour à chaque
+      déplacement ; restauré au montage de l'éditeur : changer de mode
+      (Zen -> Split notamment) ne doit pas renvoyer le curseur en haut du
+      document — il reste où l'utilisateur l'avait laissé. */
+  cursorPos: number;
   /** Scroll mémorisé par document ET par mode : on ne reprend pas une lecture
       là où on avait laissé le curseur d'édition. */
   scroll: Record<Mode, number>;
@@ -60,6 +65,7 @@ function makeDoc(content: string): OpenDoc {
     // doit pas se déclarer « Modifié » avant la première frappe.
     content,
     savedContent: content,
+    cursorPos: 0,
     scroll: { read: 0, split: 0, zen: 0 },
   };
 }

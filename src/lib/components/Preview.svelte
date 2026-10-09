@@ -34,6 +34,15 @@
     onScrollLine(line);
   }
 
+  /* Première mesure à l'affichage : sans scroll initial, aucun événement ne
+     viendrait synchroniser le plan (mode Lecture) — on reporte une frame pour
+     laisser la mise en page se poser. */
+  $effect(() => {
+    void html;
+    const id = requestAnimationFrame(() => report());
+    return () => cancelAnimationFrame(id);
+  });
+
   function onClick(e: MouseEvent) {
     const anchor = (e.target as HTMLElement | null)?.closest("a");
     const href = anchor?.getAttribute("href");

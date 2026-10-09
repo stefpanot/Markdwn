@@ -82,6 +82,9 @@
           const line = u.state.doc.lineAt(head);
           app.cursorLine = line.number;
           app.cursorCol = head - line.from + 1;
+          // Mémorisé sur le document : la restauration se fait au montage
+          // de l'éditeur, typiquement après un changement de mode.
+          if (app.active) app.active.cursorPos = head;
         }
         // Surlignage de la sélection dans l'aperçu : lignes de l'ancre à la
         // tête (dans l'ordre du document). Sélection vide = on efface.
@@ -129,17 +132,35 @@
       cet effet un dépendant du texte. Le focus suit : ouvrir un document — par
       onglet, arborescence ou « fichier suivant » — doit permettre de taper et
       de naviguer (PageUp, roulette) immédiatement, sans recliquer dans le
-      texte au préalable. */
+      texte au préalable. Le curseur est restauré là où le document l'avait
+      laissé (clé : un changement de mode détruit et recrée la vue). */
   $effect(() => {
     const doc = app.active;
     if (!view || !doc || doc.id === loadedId) return;
+    const anchor = Math.min(Math.max(doc.cursorPos, 0), doc.content.length);
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: doc.content },
-      selection: { anchor: 0 },
+      selection: { anchor },
+      effects: EditorView.scrollIntoView(anchor, { y: "center" }),
     });
     loadedId = doc.id;
     view.focus();
   });
+
+  /** Position du document sous des coordonnées écran. Sert au clic droit :
+      poser le curseur sur le point cliqué (Zen avant un changement de mode,
+      éditeur en release où le menu natif ne le fait plus). */
+  export function posAtCoords(x: number, y: number): number | null {
+    return view?.posAtCoords({ x, y }, false) ?? null;
+  }
+
+  /** Déplace le curseur à un offset du document. */
+  export function placeCursor(pos: number) {
+    if (!view) return;
+    const anchor = Math.min(Math.max(pos, 0), view.state.doc.length);
+    view.dispatch({ selection: { anchor } });
+    view.focus();
+  }
 
   export function scrollToLine(line: number) {
     if (!view) return;

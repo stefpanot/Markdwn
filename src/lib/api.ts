@@ -141,3 +141,7 @@ export const consumeInitialFile = () => invoke<string | null>("consume_initial_f
  * webview à chaque modification pertinente. Une chaîne vide arrête la
  * surveillance. Relancer sur un autre dossier remplace la précédente. */
 export const watchFolder = (path: string) => invoke<void>("watch_folder", { path });
+
+/** Ouvre les outils de développement WebView2. Sans effet en release : le
+ * menu natif étant désactivé partout, F12 en est la porte d'entrée (dev). */
+export const openDevtools = () => invoke<void>("open_devtools");

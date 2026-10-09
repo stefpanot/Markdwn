@@ -279,6 +279,23 @@ fn watch_folder(
     Ok(())
 }
 
+/// Ouvre les outils de développement WebView2. DEV uniquement : en release,
+/// le menu natif — leur ancienne porte d'entrée — est désactivé, et on ne
+/// laisse pas de porte dérobée dans une app signée.
+#[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    {
+        window.open_devtools();
+        Ok(())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = window;
+        Err("outils de développement indisponibles en release".into())
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct ResolvedLink {
     /// Chemin absolu, normalisé lexicalement (les `..` sont résolus).
@@ -517,7 +534,8 @@ pub fn run() {
             resolve_asset,
             load_config,
             save_config,
-            app_version
+            app_version,
+            open_devtools
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

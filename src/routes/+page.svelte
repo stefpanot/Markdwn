@@ -30,6 +30,7 @@
     listDir,
     listMarkdownTree,
     loadConfig,
+    openDevtools,
     readDocument,
     renderMarkdown,
     replaceInDocument,
@@ -39,7 +40,7 @@
     writeDocument,
     type SearchMatch,
   } from "$lib/api";
-  import { app, isPathUnder, parentDir } from "$lib/state.svelte";
+  import { app, isPathUnder, parentDir, type Mode } from "$lib/state.svelte";
   import { htmlToMarkdown } from "$lib/html2md";
   import { checkForUpdates } from "$lib/updater";
   import { listen } from "@tauri-apps/api/event";
@@ -173,6 +174,12 @@
     if (!app.syncScroll || app.mode !== "split") return;
     if (!acquire("preview")) return;
     editor?.scrollToLine(line);
+  }
+
+  /** Mode Lecture : pas de curseur — la position de lecture vient du
+      défilement de l'aperçu, et c'est elle qui synchronise le plan. */
+  function fromReadScroll(line: number) {
+    app.cursorLine = line;
   }
 
   /** Surlignage de la sélection dans l'aperçu (0,0 = sélection vide). */
@@ -1082,6 +1089,15 @@
         e.preventDefault();
         return;
       }
+      // F12 ouvre les outils de développement (commande sans effet en
+      // release) : le menu natif, leur ancienne porte d'entrée, est désactivé
+      // partout — sinon son « Actualiser » recharge la webview et fait perdre
+      // l'état en mémoire, exactement ce que F5 évite.
+      if (e.key === "F12") {
+        e.preventDefault();
+        openDevtools().catch(() => {});
+        return;
+      }
       // Échap ferme d'abord la recherche ouverte (depuis l'éditeur ; depuis le
       // panneau, celui-ci ferme aussi et ce garde devient un no-op).
       if (e.key === "Escape" && findOpen) {
@@ -1147,12 +1163,139 @@
     e.preventDefault();
   }
 
-  /* Le menu contextuel du webview (Recharger, Inspecter) n'a rien à faire dans
-     une app ; on le garde là où un lecteur veut copier du texte. */
+  /* Le menu contextuel du webview (Retour, Actualiser, Inspecter) est
+     désactivé PARTOUT, dev compris : son « Actualiser » recharge la page et
+     fait perdre l'état en mémoire, documents non enregistrés compris — en
+     dev comme en release. Chaque mode se voit servir le menu de l'app :
+     presse-papiers (où il y a un éditeur), enregistrement, puis les DEUX
+     AUTRES modes comme destinations. Les outils de développement restent
+     accessibles en dev via F12. */
+  let ctxMenu = $state<{
+    x: number;
+    y: number;
+    mode: Mode;
+    inEditor: boolean;
+    canCut: boolean;
+    canCopy: boolean;
+    copyText: string;
+  } | null>(null);
+
+  const ctxMenuItems = $derived.by((): MenuItem[] => {
+    const m = ctxMenu;
+    if (!m) return [];
+    const editing = m.mode !== "read";
+    const items: MenuItem[] = [];
+    if (editing && m.inEditor) {
+      // Éditeur : sélection de CodeMirror, pas celle du document.
+      items.push(
+        { label: "Couper", keys: "Ctrl+X", disabled: !m.canCut, run: () => editAction("cut") },
+        { label: "Copier", keys: "Ctrl+C", disabled: !m.canCopy, run: () => editAction("copy") },
+        { label: "Coller", keys: "Ctrl+V", run: () => editAction("paste") },
+      );
+    } else if (m.canCopy) {
+      items.push({
+        label: "Copier",
+        keys: "Ctrl+C",
+        run: () => navigator.clipboard.writeText(m.copyText).catch(() => {}),
+      });
+    }
+    items.push(
+      {
+        label: "Enregistrer",
+        keys: "Ctrl+S",
+        separatorBefore: items.length > 0,
+        disabled: !app.dirty,
+        run: save,
+      },
+      { label: "Enregistrer sous…", keys: "Ctrl+Shift+S", run: saveAs },
+    );
+    // Les deux AUTRES modes : le mode courant n'a rien à chercher ici.
+    const sep = true;
+    if (m.mode === "zen") {
+      items.push(
+        { label: "Mode Lecture", keys: "Ctrl+1", separatorBefore: sep, run: () => (app.mode = "read") },
+        { label: "Mode Split", keys: "Ctrl+2", run: () => (app.mode = "split") },
+      );
+    } else if (m.mode === "read") {
+      items.push(
+        { label: "Mode Split", keys: "Ctrl+2", separatorBefore: sep, run: () => leaveRead("split") },
+        { label: "Mode Zen", keys: "Ctrl+3", run: () => leaveRead("zen") },
+      );
+    } else {
+      items.push(
+        { label: "Mode Lecture", keys: "Ctrl+1", separatorBefore: sep, run: () => void leaveToRead() },
+        { label: "Mode Zen", keys: "Ctrl+3", run: () => (app.mode = "zen") },
+      );
+    }
+    return items;
+  });
+
+  /** Offset UTF-16 du début d'une ligne (1-based) dans un contenu. Sert à
+      reposer le curseur à la position de lecture en quittant le mode
+      Lecture : on n'a que la ligne (mesurée sur l'aperçu), pas d'éditeur. */
+  function lineStartOffset(content: string, line: number): number {
+    let pos = 0;
+    let n = 1;
+    while (n < line) {
+      const i = content.indexOf("\n", pos);
+      if (i < 0) break;
+      pos = i + 1;
+      n++;
+    }
+    return pos;
+  }
+
+  /** Quitter le mode Lecture vers un mode édition : le curseur reprend la
+      position de lecture courante, pas celle où l'édition s'était arrêtée. */
+  function leaveRead(mode: "split" | "zen") {
+    const doc = app.active;
+    if (doc) doc.cursorPos = lineStartOffset(doc.content, app.cursorLine);
+    app.mode = mode;
+  }
+
+  /** Quitter le mode Split vers la Lecture : l'aperçu du mode Lecture
+      remonte en haut à son montage — on le ramène à la ligne courante pour
+      garder le fil de lecture. */
+  async function leaveToRead() {
+    const line = app.cursorLine;
+    app.mode = "read";
+    await new Promise(requestAnimationFrame);
+    preview?.scrollToLine(line);
+  }
+
   function onContextMenu(e: MouseEvent) {
     const el = e.target as HTMLElement | null;
-    if (el?.closest(".preview, .cm-editor")) return;
+    if (!app.active) {
+      // Écran d'accueil : le menu système du webview n'a rien à faire ici.
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
+    const inEditor = !!el?.closest(".cm-editor");
+    // Curseur posé au point cliqué (Zen et Split, dans l'éditeur) : c'est là
+    // que l'on atterrit en quittant le mode. En Zen, tout le fond porte le
+    // geste, pas seulement la zone de texte.
+    if (app.mode === "zen") {
+      const pos = editor?.posAtCoords(e.clientX, e.clientY);
+      if (pos != null) app.active.cursorPos = pos;
+    } else if (inEditor) {
+      const pos = editor?.posAtCoords(e.clientX, e.clientY);
+      if (pos != null) editor?.placeCursor(pos);
+    }
+    // Sélection snapshotée à l'ouverture : dans l'éditeur, c'est celle de
+    // CodeMirror, ailleurs celle du document.
+    const copyText = inEditor
+      ? (editor?.selectedText() ?? "")
+      : (window.getSelection()?.toString() ?? "");
+    ctxMenu = {
+      x: e.clientX,
+      y: e.clientY,
+      mode: app.mode,
+      inEditor,
+      canCut: inEditor && !!copyText,
+      canCopy: !!copyText,
+      copyText,
+    };
   }
 </script>
 
@@ -1298,7 +1441,7 @@
             <Outline onGoto={gotoLine} variant="rail" activeLine={app.cursorLine} />
           </div>
         {/if}
-        <Preview bind:this={preview} variant="read" onLink={handleLink} />
+        <Preview bind:this={preview} variant="read" onScrollLine={fromReadScroll} onLink={handleLink} />
       </div>
     {:else}
       <Toolbar
@@ -1384,6 +1527,10 @@
 
   {#if menu}
     <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => (menu = null)} />
+  {/if}
+
+  {#if ctxMenu}
+    <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxMenuItems} onClose={() => (ctxMenu = null)} />
   {/if}
 
   {#if appMenu}
