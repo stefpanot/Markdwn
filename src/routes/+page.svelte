@@ -1264,6 +1264,10 @@
   }
 
   function onContextMenu(e: MouseEvent) {
+    // Un composant a déjà réclamé l'événement (menu d'onglet, par ex.) :
+    // le handler de la cible tourne AVANT celui de la fenêtre (bubulle), et
+    // il marque son passage avec preventDefault.
+    if (e.defaultPrevented) return;
     const el = e.target as HTMLElement | null;
     if (!app.active) {
       // Écran d'accueil : le menu système du webview n'a rien à faire ici.
