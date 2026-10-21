@@ -489,8 +489,12 @@
     border-radius: var(--r-md);
   }
   /* Diagrammes Mermaid rendus en SVG : marges de bloc, défilement horizontal
-     pour les larges diagrammes de séquence, typographie de l'UI (héritée par
-     le SVG), fond transparent (la palette vient des tokens du thème). */
+     pour les larges diagrammes, typographie de l'UI (héritée par le SVG),
+     fond transparent (la palette vient des tokens du thème). Les diagrammes
+     gardent leur taille naturelle : les réduire à la largeur de la colonne
+     rendait les gros C4 illisibles (texte à ~3 px). Le recadrage n'est PAS
+     appliqué aux SVG Mermaid (max-width: none) — c'est le conteneur qui
+     défile, comme sur GitHub. */
   .doc :global(.mermaid) {
     margin: 0 0 26px;
     overflow-x: auto;
@@ -498,8 +502,7 @@
     font-size: 14.5px;
   }
   .doc :global(.mermaid svg) {
-    max-width: 100%;
-    height: auto;
+    max-width: none;
     display: block;
     margin: 0 auto;
   }

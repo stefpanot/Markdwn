@@ -94,7 +94,7 @@ function applyTheme(mermaid: Mermaid, theme: Theme) {
       clusterBorder: cssVar("--border-strong"),
       edgeLabelBackground: cssVar("--surface-sunken"),
     },
-    flowchart: { htmlLabels: true, useMaxWidth: true },
+    flowchart: { htmlLabels: true, useMaxWidth: false },
     sequence: { useMaxWidth: false, wrap: true },
     // Gantt / pie / mindmap : valeurs de base suffisantes.
   });
