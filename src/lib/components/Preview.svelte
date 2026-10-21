@@ -1,6 +1,7 @@
 <script lang="ts">
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { resolveAsset } from "$lib/api";
+  import { renderMermaidBlocks } from "$lib/mermaid";
   import { app } from "$lib/state.svelte";
 
   interface Props {
@@ -98,6 +99,21 @@
           });
       }
     }
+  });
+
+  /* Blocs ```mermaid : le rendu Rust les laisse en blocs de code ordinaires
+     (langage inconnu de syntect) ; c'est ici qu'ils deviennent des SVG.
+     Dépendances : le HTML (repatcher après chaque rendu) ET le thème (la
+     palette des diagrammes suit clair/sombre, voir renderMermaidBlocks). */
+  $effect(() => {
+    const host = scroller;
+    const theme = app.theme;
+    void html;
+    if (!host) return;
+    renderMermaidBlocks(host, theme).catch(() => {
+      /* Un échec de rendu ne doit jamais casser l'aperçu : le bloc de code
+         brut reste affiché tel quel. */
+    });
   });
 
   /** Amène l'ancre en haut de la zone lisible. Retourne false si l'ancre
@@ -471,6 +487,43 @@
   .doc :global(img) {
     max-width: 100%;
     border-radius: var(--r-md);
+  }
+  /* Diagrammes Mermaid rendus en SVG : marges de bloc, défilement horizontal
+     pour les larges diagrammes de séquence, typographie de l'UI (héritée par
+     le SVG), fond transparent (la palette vient des tokens du thème). */
+  .doc :global(.mermaid) {
+    margin: 0 0 26px;
+    overflow-x: auto;
+    font-family: var(--font-ui);
+    font-size: 14.5px;
+  }
+  .doc :global(.mermaid svg) {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+  }
+  /* Syntaxe invalide : message discret, source conservée dans un dépliant. */
+  .doc :global(.mermaid-error) {
+    margin: 0 0 26px;
+    padding: 10px 14px;
+    border-radius: var(--r-xl);
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 1px var(--accent-line);
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    color: var(--accent-fg);
+  }
+  .doc :global(.mermaid-error p) {
+    margin: 0;
+  }
+  .doc :global(.mermaid-error summary) {
+    cursor: pointer;
+    margin-top: 6px;
+    color: var(--fg-3);
+  }
+  .doc :global(.mermaid-error pre) {
+    margin-top: 8px;
   }
   .doc :global(input[type="checkbox"]) {
     accent-color: var(--accent);
