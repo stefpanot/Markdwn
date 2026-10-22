@@ -26,6 +26,7 @@
  */
 
 import type { Theme } from "./state.svelte";
+import { enhanceMermaidDiagram } from "./mermaidNav";
 
 type Mermaid = typeof import("mermaid").default;
 
@@ -174,6 +175,13 @@ export async function renderMermaidBlocks(host: HTMLElement, theme: Theme): Prom
       div.innerHTML = result.svg;
       sources.set(div, source);
       pre.replaceWith(div);
+      // Navigation (ajuster / zoom / main) : une panne ne doit jamais
+      // empêcher l'affichage du diagramme lui-même.
+      try {
+        enhanceMermaidDiagram(div);
+      } catch {
+        /* nav indisponible : le SVG reste affiché tel quel */
+      }
     } else {
       // Syntaxe invalide : le message s'affiche, le source reste lisible
       // dessous (dans un dépliant) pour corriger sans repasser à l'éditeur.

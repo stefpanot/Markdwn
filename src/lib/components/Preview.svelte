@@ -488,23 +488,86 @@
     max-width: 100%;
     border-radius: var(--r-md);
   }
-  /* Diagrammes Mermaid rendus en SVG : marges de bloc, défilement horizontal
-     pour les larges diagrammes, typographie de l'UI (héritée par le SVG),
-     fond transparent (la palette vient des tokens du thème). Les diagrammes
-     gardent leur taille naturelle : les réduire à la largeur de la colonne
-     rendait les gros C4 illisibles (texte à ~3 px). Le recadrage n'est PAS
-     appliqué aux SVG Mermaid (max-width: none) — c'est le conteneur qui
-     défile, comme sur GitHub. */
+  /* Diagrammes Mermaid rendus en SVG : la navigation (ajuster / zoom / main)
+     vit dans .mnav (porteur transformé) — voir mermaidNav.ts. Le conteneur
+     recadre (overflow hidden) et sa hauteur est pilotée en JS ; la barre
+     d'outils apparaît au survol. Typographie de l'UI héritée par le SVG,
+     palette via les tokens du thème, fond transparent. */
   .doc :global(.mermaid) {
+    position: relative;
     margin: 0 0 26px;
-    overflow-x: auto;
+    overflow: hidden;
     font-family: var(--font-ui);
     font-size: 14.5px;
+    outline: none;
+  }
+  .doc :global(.mermaid .mnav) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
   }
   .doc :global(.mermaid svg) {
     max-width: none;
     display: block;
-    margin: 0 auto;
+  }
+  /* Barre d'outils : disquette flottante, visible au survol / au focus. */
+  .doc :global(.mermaid .mtoolbar) {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-md);
+    background: color-mix(in srgb, var(--chip) 88%, transparent);
+    backdrop-filter: blur(6px);
+    box-shadow: 0 0 0 1px var(--border-strong), 0 4px 14px rgba(0, 0, 0, 0.12);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 2;
+  }
+  .doc :global(.mermaid:hover .mtoolbar),
+  .doc :global(.mermaid:focus-within .mtoolbar) {
+    opacity: 1;
+  }
+  .doc :global(.mtoolbar button) {
+    border: 0;
+    background: transparent;
+    color: var(--fg-2);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    line-height: 1;
+    padding: 5px 8px;
+    border-radius: calc(var(--r-md) - 2px);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .doc :global(.mtoolbar button:hover) {
+    background: var(--surface-sunken);
+    color: var(--fg-bright);
+  }
+  .doc :global(.mtoolbar button.on) {
+    background: var(--accent-soft);
+    color: var(--accent-fg);
+    box-shadow: inset 0 0 0 1px var(--accent-line);
+  }
+  .doc :global(.mtoolbar .mpct) {
+    min-width: 46px;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Mode main : le curseur invite au glisser, le texte ne se sélectionne pas. */
+  .doc :global(.mermaid.pan) {
+    cursor: grab;
+    user-select: none;
+  }
+  .doc :global(.mermaid.pan .mnav) {
+    cursor: grab;
+  }
+  .doc :global(.mermaid .mnav.grabbing) {
+    cursor: grabbing;
   }
   /* Syntaxe invalide : message discret, source conservée dans un dépliant. */
   .doc :global(.mermaid-error) {
