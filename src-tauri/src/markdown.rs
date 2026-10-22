@@ -240,6 +240,12 @@ pub fn render(source: &str) -> Rendered {
 
     // Profondeur d'imbrication : on ne marque que les blocs de niveau 0.
     let mut depth: i32 = 0;
+    // Dans un bloc de code (clôturé de langage inconnu, ou indenté), le
+    // contenu arrive en événements Text : `==…==` n'y est PAS un délimiteur
+    // de surlignage. Sans cette garde, les flèches épaisses `==>` d'un
+    // diagramme Mermaid perdaient leur `==` (appariés comme une paire de
+    // délimiteurs) et le diagramme ne parsait plus.
+    let mut in_code = false;
     // Titre en cours de collecte, s'il y en a un.
     let mut current_heading: Option<(u8, usize, String)> = None;
     // Index dans `events` de chaque Start(Heading), pour y injecter l'id une
@@ -279,6 +285,9 @@ pub fn render(source: &str) -> Rendered {
         }
         match &event {
             Event::Start(tag) => {
+                if matches!(tag, Tag::CodeBlock(_)) {
+                    in_code = true;
+                }
                 if is_block_tag(tag) && depth == 0 {
                     let line = line_of(&starts, range.start);
                     events.push(Event::Html(
@@ -293,6 +302,9 @@ pub fn render(source: &str) -> Rendered {
                 depth += 1;
             }
             Event::End(end) => {
+                if matches!(end, TagEnd::CodeBlock) {
+                    in_code = false;
+                }
                 depth -= 1;
                 if matches!(end, TagEnd::Heading(_)) {
                     if let Some((level, line, text)) = current_heading.take() {
@@ -306,7 +318,7 @@ pub fn render(source: &str) -> Rendered {
                 }
             }
             Event::Text(t) => {
-                if t.contains("==") {
+                if t.contains("==") && !in_code {
                     // `==surligné==` n'existe pas dans CommonMark : on l'émet
                     // comme HTML inline, dont le rendu est assuré par <mark>.
                     // Comptage et sommaire portent sur le texte débarrassé des
@@ -457,6 +469,23 @@ mod tests {
     #[test]
     fn code_inline_is_never_marked() {
         let r = render("`==pas de surligné==`\n");
+        assert!(!r.html.contains("<mark>"));
+    }
+
+    #[test]
+    fn mark_never_applies_inside_fenced_code() {
+        // Les flèches épaisses `==>` d'un diagramme Mermaid (langage inconnu
+        // de syntect, donc rendu par le flux d'événements général) perdaient
+        // leur `==`, apparié comme une paire de délimiteurs de surlignage.
+        let r = render("```mermaid\nflowchart TB\n    a ==>|\"x\"| b\n```\n");
+        assert!(r.html.contains("==&gt;|"), "les `==` doivent survivre : {}", r.html);
+        assert!(!r.html.contains("<mark>"));
+    }
+
+    #[test]
+    fn mark_never_applies_inside_indented_code() {
+        let r = render("    a ==>|\"x\"| b\n");
+        assert!(r.html.contains("==&gt;|"));
         assert!(!r.html.contains("<mark>"));
     }
 
