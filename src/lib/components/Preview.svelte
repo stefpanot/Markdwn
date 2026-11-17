@@ -395,10 +395,17 @@
     background: var(--surface-sunken);
     box-shadow: 0 0 0 1px var(--border-strong);
     overflow-x: auto;
-  }
-  .doc :global(pre code) {
+    /* Police, taille et interligne posés sur le bloc lui-même : une ligne ne
+       descend jamais sous l'interligne de son conteneur, et le pre héritait
+       sinon de celui de la prose (1,78 × la taille de lecture en mode
+       Lecture) — le code paraissait en double interligne. */
+    font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.62;
+  }
+  .doc :global(pre code) {
+    font-size: inherit;
+    line-height: inherit;
     padding: 0;
     background: none;
     color: var(--syn-text);
