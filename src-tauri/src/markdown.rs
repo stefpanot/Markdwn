@@ -122,6 +122,14 @@ fn is_block_tag(tag: &Tag) -> bool {
 /// relancé à chaque modification, débouncée mais fréquente).
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 
+/// Décompresse le jeu de syntaxes en tâche de fond, au lancement : sans ça,
+/// le premier document ouvert paie ce chargement en plus de son rendu.
+pub fn warm_up() {
+    std::thread::spawn(|| {
+        LazyLock::force(&SYNTAX_SET);
+    });
+}
+
 /// Échappement minimal identique à celui que pulldown-cmark applique au
 /// contenu des blocs de code et à l'attribut `class` des `<code>`.
 fn escape_html(s: &str) -> String {

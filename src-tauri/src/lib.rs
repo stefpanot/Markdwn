@@ -86,9 +86,22 @@ fn ensure_allowed(state: &AllowedPaths, path: &str) -> Result<PathBuf, String> {
     Ok(p)
 }
 
+/* Fil d'exécution des commandes. Une commande Tauri SANS `async` s'exécute
+   sur le thread principal — celui de la boucle d'événements de la fenêtre :
+   tant qu'elle tourne, l'interface est gelée (ni clic, ni défilement, ni
+   repeinte). Tout ce qui touche au disque ou au rendu est donc déclaré
+   `#[tauri::command(async)]` : même corps synchrone, mais exécuté sur le pool
+   de threads de Tauri. Le front tient compte de l'ordre d'arrivée, qui n'est
+   plus garanti (gardes de séquence dans +page.svelte).
+
+   Restent synchrones, exprès : `write_document` et `save_config`, car deux
+   écritures lancées coup sur coup doivent atterrir dans l'ordre (sinon une
+   version plus ancienne pourrait écraser la plus récente) ; `watch_folder`,
+   pour la même raison d'ordre ; et les commandes triviales. */
+
 /// Enregistre un chemin explicitement ouvert par l'utilisateur — dialogue
 /// (fichier, dossier, enregistrer sous) ou fichier reçu par « ouvrir avec ».
-#[tauri::command]
+#[tauri::command(async)]
 fn allow_path(
     path: String,
     state: tauri::State<'_, AllowedPaths>,
@@ -99,12 +112,12 @@ fn allow_path(
 
 /// Markdown -> HTML, plus le sommaire et les compteurs. Le front n'a aucune
 /// logique de parsing : il patche le DOM à partir de ce que renvoie Rust.
-#[tauri::command]
+#[tauri::command(async)]
 fn render_markdown(source: String) -> markdown::Rendered {
     markdown::render(&source)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn read_document(path: String, state: tauri::State<'_, AllowedPaths>) -> Result<Document, String> {
     let p = ensure_allowed(&state, &path)?;
     let content = std::fs::read_to_string(&p).map_err(|e| format!("{path} : {e}"))?;
@@ -127,7 +140,7 @@ fn write_document(
 
 /// Occurrences d'une query dans le document courant, positions UTF-16 prêtes
 /// pour CodeMirror. Socle de la recherche multi-fichiers (Piste 3).
-#[tauri::command]
+#[tauri::command(async)]
 fn find_in_document(
     source: String,
     query: String,
@@ -137,7 +150,7 @@ fn find_in_document(
 }
 
 /// Document avec toutes les occurrences remplacées (littéral, non chevauchant).
-#[tauri::command]
+#[tauri::command(async)]
 fn replace_in_document(
     source: String,
     query: String,
@@ -168,34 +181,68 @@ fn consume_initial_file(state: tauri::State<Mutex<Option<String>>>) -> Option<St
 
 /// Dossiers et fichiers Markdown seulement — c'est un éditeur Markdown, pas un
 /// explorateur de fichiers générique.
-#[tauri::command]
+#[tauri::command(async)]
 fn list_dir(path: String, state: tauri::State<'_, AllowedPaths>) -> Result<Vec<DirEntryInfo>, String> {
     let base = ensure_allowed(&state, &path)?;
-    let mut out = Vec::new();
-    for entry in std::fs::read_dir(&base).map_err(|e| format!("{path} : {e}"))? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let p = entry.path();
-        let is_dir = p.is_dir();
-        let name = file_name_of(&p);
+    let entries = tree_entries(&base).map_err(|e| format!("{path} : {e}"))?;
+    Ok(entries
+        .into_iter()
+        .map(|e| DirEntryInfo {
+            path: e.path.to_string_lossy().into_owned(),
+            name: e.name,
+            is_dir: e.is_dir,
+        })
+        .collect())
+}
+
+/// Une entrée de dossier telle que l'arborescence l'affiche.
+struct TreeEntry {
+    path: PathBuf,
+    name: String,
+    is_dir: bool,
+}
+
+/// Dossier ou non, SANS appel système supplémentaire dans le cas courant :
+/// le type vient des données déjà renvoyées par l'énumération (sous Windows,
+/// FindNextFileW), alors que `Path::is_dir` refait un stat complet à chaque
+/// appel. Un lien symbolique ou une jonction garde le comportement d'avant
+/// (on suit la cible) : c'est le seul cas où l'on paie le stat.
+fn entry_is_dir(entry: &std::fs::DirEntry) -> bool {
+    match entry.file_type() {
+        Ok(ft) if ft.is_symlink() => entry.path().is_dir(),
+        Ok(ft) => ft.is_dir(),
+        Err(_) => entry.path().is_dir(),
+    }
+}
+
+/// Entrées visibles d'un dossier, dans l'ordre affiché : dossiers d'abord,
+/// puis alphabétique insensible à la casse. Filtres communs à l'arbre et à la
+/// liste plate : ni fichiers cachés, ni autre chose que dossiers et Markdown.
+///
+/// Partagé par `list_dir` et `walk`, et pensé pour les gros dossiers : le type
+/// de chaque entrée est lu une fois (voir `entry_is_dir`) et la clé de tri
+/// calculée une fois. L'ancienne version rappelait `is_dir()` — un appel
+/// système — et `to_lowercase()` dans le comparateur, soit O(n log n) stats :
+/// mesuré à ~2 à 4,7 s sur un dossier de projets réel, contre ~0,2 s ici.
+fn tree_entries(dir: &Path) -> std::io::Result<Vec<TreeEntry>> {
+    let mut keyed: Vec<(String, TreeEntry)> = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        // Une entrée illisible (droits, course avec une suppression) ne doit
+        // pas masquer tout le reste du dossier.
+        let Ok(entry) = entry else { continue };
+        let name = entry.file_name().to_string_lossy().into_owned();
         if name.starts_with('.') {
             continue;
         }
-        if !is_dir && !is_markdown(&p) {
+        let path = entry.path();
+        let is_dir = entry_is_dir(&entry);
+        if !is_dir && !is_markdown(&path) {
             continue;
         }
-        out.push(DirEntryInfo {
-            path: p.to_string_lossy().into_owned(),
-            name,
-            is_dir,
-        });
+        keyed.push((name.to_lowercase(), TreeEntry { path, name, is_dir }));
     }
-    // Dossiers d'abord, puis alphabétique insensible à la casse.
-    out.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-    Ok(out)
+    keyed.sort_by(|(ka, a), (kb, b)| b.is_dir.cmp(&a.is_dir).then_with(|| ka.cmp(kb)));
+    Ok(keyed.into_iter().map(|(_, e)| e).collect())
 }
 
 fn config_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -228,22 +275,63 @@ fn save_config(app: tauri::AppHandle, config: config::Config) -> Result<(), Stri
     config::save_to(&dir, &config)
 }
 
+/// Un événement du watcher change-t-il la FORME de l'arbre ? Seuls comptent
+/// créations, suppressions et renommages : l'arbre n'affiche que des noms.
+///
+/// C'est le filtre décisif pour les performances. Sous Windows,
+/// ReadDirectoryChangesW signale une modification pour chaque écriture d'un
+/// fichier ET pour son dossier parent (sa date de modification bouge). Sans ce
+/// tri, la moindre activité disque dans le dossier ouvert — un build, un
+/// `git status`, un simple Ctrl+S — passait le filtre des chemins (le parent
+/// est un dossier) et relançait un refresh complet de l'arborescence.
+fn changes_tree_shape(kind: &notify::EventKind) -> bool {
+    use notify::event::ModifyKind;
+    use notify::EventKind;
+    match kind {
+        EventKind::Create(_) | EventKind::Remove(_) => true,
+        EventKind::Modify(ModifyKind::Name(_)) => true,
+        // Contenu, métadonnées, accès : rien qui touche à l'arbre.
+        EventKind::Modify(_) | EventKind::Access(_) => false,
+        // Nature inconnue : on rafraîchit par prudence.
+        EventKind::Any | EventKind::Other => true,
+    }
+}
+
+/// Un composant de chemin caché (`.git`, `.obsidian`…).
+fn is_hidden_component(c: std::path::Component<'_>) -> bool {
+    c.as_os_str().as_encoded_bytes().first() == Some(&b'.')
+}
+
 /// Un chemin d'événement du watcher doit-il déclencher un refresh de
-/// l'arborescence ? Mêmes filtres que `list_dir` : les fichiers cachés
-/// (`.git`, `.obsidian`…) ne sont pas dans l'arbre, inutile de rafraîchir
-/// pour eux ; seuls comptent les dossiers et les Markdown. Une cible absente
-/// du disque (suppression) passe dès lors qu'elle ne porte pas d'extension —
-/// un répertoire supprimé n'a pas de moyen fiable de se déclarer dossier.
-fn event_is_relevant(p: &Path) -> bool {
-    if file_name_of(p).starts_with('.') {
+/// l'arborescence ? Mêmes filtres que `list_dir` : rien de ce qui vit SOUS un
+/// dossier caché n'est dans l'arbre — `.git/objects/ab`, créé à chaque commit,
+/// porte un nom anodin, mais son parent est caché ; seuls comptent ensuite les
+/// dossiers et les Markdown. Une cible absente du disque (suppression) passe
+/// dès lors qu'elle ne porte pas d'extension — un répertoire supprimé n'a pas
+/// de moyen fiable de se déclarer dossier.
+fn event_is_relevant(root: &Path, p: &Path) -> bool {
+    let hidden = match p.strip_prefix(root) {
+        Ok(rel) => rel.components().any(is_hidden_component),
+        // Hors de la racine (ne devrait pas arriver) : on juge le nom seul.
+        Err(_) => file_name_of(p).starts_with('.'),
+    };
+    if hidden {
         return false;
     }
     p.is_dir() || is_markdown(p) || (!p.exists() && p.extension().is_none())
 }
 
+/// Intervalle minimal entre deux notifications à la webview. Chaque `emit`
+/// est un aller-retour vers le thread de la fenêtre : un `git checkout` qui
+/// touche mille fichiers en enverrait mille. Le front débounce de 300 ms
+/// APRÈS la dernière notification reçue ; un événement écarté ici survient
+/// donc moins de 100 ms après une notification émise, et le refresh qu'elle
+/// déclenche — au plus tôt 300 ms plus tard — le voit forcément.
+const EMIT_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// Surveille récursivement le dossier ouvert et notifie la webview à chaque
 /// changement pertinent (événement "folder-changed", payload = la racine).
-/// Le front débounc (~300 ms) : notify émet par rafales. Relancer la commande
+/// Le front débounce (~300 ms) : notify émet par rafales. Relancer la commande
 /// sur un autre dossier arrête la surveillance précédente ; un chemin vide
 /// arrête tout (fenêtre sans dossier ouvert).
 #[tauri::command]
@@ -261,16 +349,26 @@ fn watch_folder(
     }
     let base = ensure_allowed(&guard, &path)?;
     let root = base.to_string_lossy().into_owned();
+    let watched = base.clone();
+    let mut last_emit: Option<std::time::Instant> = None;
     let mut w = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
         let Ok(event) = res else { return };
-        if event.kind.is_access() {
-            return; // lectures, ouvertures : rien qui change l'arbre
+        // Débordement du tampon du système : des événements ont été perdus,
+        // seul un refresh complet remet l'arbre d'aplomb.
+        let relevant = event.need_rescan()
+            || (changes_tree_shape(&event.kind)
+                && event.paths.iter().any(|p| event_is_relevant(&watched, p)));
+        if !relevant {
+            return;
         }
-        if event.paths.iter().any(|p| event_is_relevant(p)) {
-            // La racine est le seul identifiant dont le front a besoin :
-            // c'est elle qu'il relit au complet.
-            let _ = app.emit("folder-changed", root.clone());
+        let now = std::time::Instant::now();
+        if last_emit.is_some_and(|t| now.duration_since(t) < EMIT_MIN_INTERVAL) {
+            return;
         }
+        last_emit = Some(now);
+        // La racine est le seul identifiant dont le front a besoin :
+        // c'est elle qu'il relit au complet.
+        let _ = app.emit("folder-changed", root.clone());
     })
     .map_err(|e| format!("watcher : {e}"))?;
     notify::Watcher::watch(&mut w, &base, notify::RecursiveMode::Recursive)
@@ -328,7 +426,7 @@ fn resolve_relative(from: &str, href: &str) -> Result<PathBuf, String> {
 /// La cible est enregistrée au passage : naviguer vers un document lié
 /// (« ../../notes/autre.md ») est un flux légitime, le garde des chemins ne
 /// doit pas le briser.
-#[tauri::command]
+#[tauri::command(async)]
 fn resolve_link(
     from: String,
     href: String,
@@ -421,7 +519,7 @@ fn normalise(p: &Path) -> PathBuf {
 /// l'arborescence affichée (dossiers d'abord, puis alphabétique). C'est ce qui
 /// permet « fichier suivant / précédent » sans surprise : l'ordre du clavier
 /// est celui que l'œil voit.
-#[tauri::command]
+#[tauri::command(async)]
 fn list_markdown_tree(
     path: String,
     state: tauri::State<'_, AllowedPaths>,
@@ -441,28 +539,14 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<String>) {
     if depth > MAX_DEPTH || out.len() >= MAX_FILES {
         return;
     }
-    let Ok(read) = std::fs::read_dir(dir) else {
+    let Ok(entries) = tree_entries(dir) else {
         return;
     };
-
-    let mut entries: Vec<PathBuf> = read
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| !file_name_of(p).starts_with('.'))
-        .filter(|p| p.is_dir() || is_markdown(p))
-        .collect();
-
-    entries.sort_by(|a, b| {
-        b.is_dir()
-            .cmp(&a.is_dir())
-            .then_with(|| file_name_of(a).to_lowercase().cmp(&file_name_of(b).to_lowercase()))
-    });
-
-    for p in entries {
-        if p.is_dir() {
-            walk(&p, depth + 1, out);
+    for e in entries {
+        if e.is_dir {
+            walk(&e.path, depth + 1, out);
         } else {
-            out.push(p.to_string_lossy().into_owned());
+            out.push(e.path.to_string_lossy().into_owned());
         }
     }
 }
@@ -489,6 +573,9 @@ pub fn run() {
     // récupère pour la webview. L'état partagé évite la course : la webview
     // le consomme quand elle est prête (voir consume_initial_file).
     let initial_file = markdown_arg(std::env::args().skip(1));
+    // Le jeu de syntaxes se décompresse pendant que la fenêtre s'ouvre, pas
+    // au premier document ouvert.
+    markdown::warm_up();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -709,17 +796,74 @@ mod tests {
         std::fs::write(root.join("a.md"), "a").unwrap();
         std::fs::write(root.join("b.txt"), "b").unwrap();
 
+        std::fs::create_dir_all(root.join(".git").join("objects").join("ab")).unwrap();
+        std::fs::write(root.join(".git").join("notes.md"), "n").unwrap();
+
         // Ce que l'arbre affiche : dossiers et Markdown.
-        assert!(event_is_relevant(&root.join("docs")));
-        assert!(event_is_relevant(&root.join("a.md")));
+        assert!(event_is_relevant(&root, &root.join("docs")));
+        assert!(event_is_relevant(&root, &root.join("a.md")));
         // Ce qu'il masque : non-Markdown, fichiers cachés.
-        assert!(!event_is_relevant(&root.join("b.txt")));
-        assert!(!event_is_relevant(&root.join(".git")));
-        assert!(!event_is_relevant(&root.join(".obsidian").join("app.json")));
+        assert!(!event_is_relevant(&root, &root.join("b.txt")));
+        assert!(!event_is_relevant(&root, &root.join(".git")));
+        assert!(!event_is_relevant(&root, &root.join(".obsidian").join("app.json")));
+        // …et tout ce qui vit SOUS un dossier caché, même au nom anodin :
+        // git crée `.git/objects/ab` à chaque commit.
+        assert!(!event_is_relevant(&root, &root.join(".git").join("objects").join("ab")));
+        assert!(!event_is_relevant(&root, &root.join(".git").join("notes.md")));
         // Suppressions : un .md reste identifiable à son extension ; un dossier
         // supprimé n'existe plus — on accepte au cas où (refresh conservateur).
-        assert!(event_is_relevant(&root.join("absent.md")));
-        assert!(event_is_relevant(&root.join("absent")));
+        assert!(event_is_relevant(&root, &root.join("absent.md")));
+        assert!(event_is_relevant(&root, &root.join("absent")));
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn only_structural_events_refresh_the_tree() {
+        use notify::event::{
+            AccessKind, CreateKind, DataChange, MetadataKind, ModifyKind, RemoveKind, RenameMode,
+        };
+        use notify::EventKind;
+
+        // Ce qui change la forme de l'arbre.
+        assert!(changes_tree_shape(&EventKind::Create(CreateKind::Any)));
+        assert!(changes_tree_shape(&EventKind::Remove(RemoveKind::Any)));
+        assert!(changes_tree_shape(&EventKind::Modify(ModifyKind::Name(RenameMode::To))));
+        assert!(changes_tree_shape(&EventKind::Any));
+        // Ce qui ne la change pas. `Modify(Any)` est ce que Windows émet pour
+        // CHAQUE écriture — et pour le dossier parent du fichier écrit.
+        assert!(!changes_tree_shape(&EventKind::Modify(ModifyKind::Any)));
+        assert!(!changes_tree_shape(&EventKind::Modify(ModifyKind::Data(DataChange::Any))));
+        assert!(!changes_tree_shape(&EventKind::Modify(ModifyKind::Metadata(MetadataKind::Any))));
+        assert!(!changes_tree_shape(&EventKind::Access(AccessKind::Any)));
+    }
+
+    #[test]
+    fn list_entries_are_sorted_and_filtered_like_the_tree() {
+        let root = std::env::temp_dir().join(format!("mde-list-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("zeta")).unwrap();
+        std::fs::create_dir_all(root.join("Alpha")).unwrap();
+        std::fs::create_dir_all(root.join(".cache")).unwrap();
+        std::fs::write(root.join("b.md"), "b").unwrap();
+        std::fs::write(root.join("A.markdown"), "a").unwrap();
+        std::fs::write(root.join("image.png"), "p").unwrap();
+        std::fs::write(root.join(".hidden.md"), "h").unwrap();
+
+        let got: Vec<(String, bool)> = tree_entries(&root)
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.name, e.is_dir))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("Alpha".to_string(), true),
+                ("zeta".to_string(), true),
+                ("A.markdown".to_string(), false),
+                ("b.md".to_string(), false),
+            ]
+        );
 
         std::fs::remove_dir_all(&root).unwrap();
     }

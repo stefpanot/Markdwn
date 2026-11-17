@@ -1,3 +1,4 @@
+import { SvelteMap } from "svelte/reactivity";
 import type { AppConfig, DirEntryInfo, Heading, Rendered } from "./api";
 
 export type Mode = "read" | "split" | "zen";
@@ -82,17 +83,23 @@ class AppState {
   docs = $state<OpenDoc[]>([]);
   activeIndex = $state(0);
 
+  /* Données reçues de Rust, toujours REMPLACÉES d'un bloc, jamais modifiées
+     en place : `$state.raw` évite à Svelte d'envelopper chaque élément dans
+     un proxy réactif. Sur un dossier de quelques milliers de fichiers, le
+     simple `folderFiles.indexOf(...)` du « fichier suivant » créait sinon un
+     signal par élément, à chaque changement de document. */
+
   /** Résultat du rendu Rust pour le document actif. */
-  rendered = $state<Rendered | null>(null);
+  rendered = $state.raw<Rendered | null>(null);
 
   cursorLine = $state(1);
   cursorCol = $state(1);
 
   /** Racine de l'arborescence, vide tant qu'aucun dossier n'est ouvert. */
   folderPath = $state("");
-  folderEntries = $state<DirEntryInfo[]>([]);
+  folderEntries = $state.raw<DirEntryInfo[]>([]);
   /** Liste plate ordonnée des .md du dossier, pour fichier suivant/précédent. */
-  folderFiles = $state<string[]>([]);
+  folderFiles = $state.raw<string[]>([]);
 
   /** Dernier chemin demandé pour la révélation dans l'arborescence. */
   revealPath = $state("");
@@ -142,8 +149,10 @@ class AppState {
      oubliés (leur entrée reste en mémoire, inoffensive). --- */
   /** Dossiers dépliés. */
   treeExpanded = $state<Record<string, boolean>>({});
-  /** Enfants chargés par dossier ; `undefined` = pas encore lus. */
-  treeChildren = $state<Record<string, DirEntryInfo[]>>({});
+  /** Enfants chargés par dossier ; absent = pas encore lus. Une SvelteMap :
+      réactive clé par clé (remplacer les enfants d'un dossier ne réveille
+      que ce dossier), et ses valeurs restent des tableaux bruts. */
+  readonly treeChildren = new SvelteMap<string, DirEntryInfo[]>();
 
   /** Faux tant que la configuration n'est pas chargée : il ne faut surtout pas
       réécrire le fichier avec les valeurs par défaut entre-temps. */
@@ -231,14 +240,7 @@ class AppState {
       d'expansion d'un autre dossier n'a aucune raison de survivre. */
   resetTree() {
     this.treeExpanded = {};
-    this.treeChildren = {};
-  }
-
-  /** Marque les enfants chargés comme périmés : au prochain affichage, chaque
-      dossier déplié se relit depuis le disque. L'expansion, elle, survit —
-      c'est tout l'intérêt de cet état indexé par chemin. */
-  invalidateTree() {
-    this.treeChildren = {};
+    this.treeChildren.clear();
   }
 
   /** Ouvre le document de découverte, à la demande depuis l'écran d'accueil. */

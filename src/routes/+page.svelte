@@ -38,6 +38,7 @@
     saveConfig,
     watchFolder,
     writeDocument,
+    type DirEntryInfo,
     type SearchMatch,
   } from "$lib/api";
   import { app, isPathUnder, parentDir, type Mode } from "$lib/state.svelte";
@@ -130,20 +131,33 @@
   });
 
   /* ---------- rendu : debounce, jamais de reparse à chaque frappe ---------- */
+  /** Dernier texte dont on a demandé le rendu. Le rendu Rust tourne hors du
+      thread de l'interface : deux rendus peuvent se croiser, et un résultat
+      ancien arrivé en retard ne doit pas écraser l'aperçu d'un texte plus
+      récent. Comparer le TEXTE (et non un numéro de requête) laisse passer
+      deux rendus identiques — utile à handleLink, qui force un rendu
+      immédiat pendant que le rendu débouncé du même document est en route. */
+  let renderTarget: string | null = null;
+
   async function renderNow(source: string) {
+    renderTarget = source;
     try {
-      app.rendered = await renderMarkdown(source);
+      const rendered = await renderMarkdown(source);
+      if (source !== renderTarget) return;
+      app.rendered = rendered;
       error = "";
     } catch (e) {
-      error = String(e);
+      if (source === renderTarget) error = String(e);
     }
   }
 
   $effect(() => {
     const doc = app.active;
     // Aucun document : purger le rendu, sinon l'écran d'accueil garderait un
-    // sommaire et des compteurs qui ne correspondent plus à rien.
+    // sommaire et des compteurs qui ne correspondent plus à rien. Un rendu
+    // encore en route ne doit pas le ressusciter.
     if (!doc) {
+      renderTarget = null;
       app.rendered = null;
       return;
     }
@@ -235,14 +249,22 @@
   }
 
   /* ---------- fichiers ---------- */
+  /** Numéro de la dernière ouverture demandée. Les lectures disque tournent
+      hors du thread de l'interface et peuvent finir dans le désordre : seule
+      la plus récente l'emporte — deux clics rapides dans l'arbre ouvrent le
+      second fichier, jamais le premier par-dessus. */
+  let openSeq = 0;
+
   async function openPath(path: string, opts: { newTab?: boolean } = {}) {
+    const seq = ++openSeq;
     try {
       const doc = await readDocument(path);
+      if (seq !== openSeq) return;
       app.open(doc, { forceNew: opts.newTab });
       pushHistory(path);
       error = "";
     } catch (e) {
-      error = String(e);
+      if (seq === openSeq) error = String(e);
     }
   }
 
@@ -268,47 +290,118 @@
   /** Dernière racine transmise au watcher : on ne (re)lance la surveillance
       que quand elle change — jamais pour un simple refresh après enregistrement. */
   let watchedRoot = "";
+  /** Vrai quand le watcher Rust surveille la racine courante : il signale
+      alors lui-même créations, suppressions et renommages, et les relectures
+      de secours (retour de focus, après enregistrement) n'ont plus lieu
+      d'être. Faux s'il a échoué : ce sont elles qui prennent le relais. */
+  let watcherActive = false;
+
+  /** Numéro de la dernière relecture lancée, et la racine qu'elle vise. Les
+      commandes disque tournent hors du thread de l'interface : deux relectures
+      peuvent se croiser (ouverture d'un dossier pendant un refresh du
+      watcher), et seule la plus récente doit s'appliquer. */
+  let folderSeq = 0;
+  let targetRoot = "";
 
   /** Relit le dossier depuis le disque. Changement de racine : l'état de
-      l'arbre précédent est oublié ; simple refresh : l'expansion survit et
-      les dossiers dépliés se rechargent (les données sont remplacées sans
-      jamais refermer l'arborescence). */
+      l'arbre précédent est oublié. Simple refresh : rien n'est démonté — les
+      dossiers dépliés se relisent en place et seuls les changements réels
+      touchent l'arbre affiché (un refresh sans changement ne coûte rien à
+      l'interface). Avant, chaque refresh vidait tout le cache : l'arbre
+      déplié disparaissait puis se reconstruisait dossier par dossier. */
   async function refreshFolder(path: string) {
-    const [entries, files] = await Promise.all([listDir(path), listMarkdownTree(path)]);
-    if (path !== app.folderPath) app.resetTree();
-    else app.invalidateTree();
-    app.folderEntries = entries;
-    app.folderFiles = files;
+    const seq = ++folderSeq;
+    targetRoot = path;
+    let entries: DirEntryInfo[];
+    let files: string[];
+    try {
+      [entries, files] = await Promise.all([listDir(path), listMarkdownTree(path)]);
+    } catch (e) {
+      // Racine illisible : les refreshs de fond reviennent à celle affichée.
+      if (seq === folderSeq) targetRoot = app.folderPath;
+      throw e;
+    }
+    if (seq !== folderSeq) return;
+
+    const sameRoot = path === app.folderPath;
+    if (!sameRoot) app.resetTree();
+    if (!sameRoot || !sameEntries(app.folderEntries, entries)) app.folderEntries = entries;
+    if (!sameRoot || !sameList(app.folderFiles, files)) app.folderFiles = files;
     app.folderPath = path;
-    // La surveillance suit la racine courante. Échec silencieux : le bouton
-    // refresh et le focus de la fenêtre restent comme filets de sécurité.
+    if (sameRoot) void reloadLoadedFolders(seq);
+
+    // La surveillance suit la racine courante. En cas d'échec, le bouton
+    // refresh et le retour de focus de la fenêtre servent de filets.
     if (path !== watchedRoot) {
       watchedRoot = path;
-      watchFolder(path).catch(() => {});
+      watcherActive = false;
+      watchFolder(path)
+        .then(() => {
+          if (watchedRoot === path) watcherActive = true;
+        })
+        .catch(() => {});
     }
+  }
+
+  /** Relit les sous-dossiers déjà chargés, en place. Un dossier replié est
+      simplement oublié : il se relira s'il est rouvert. */
+  async function reloadLoadedFolders(seq: number) {
+    const dirs = [...app.treeChildren.keys()];
+    await Promise.all(
+      dirs.map(async (dir) => {
+        if (!app.treeExpanded[dir]) {
+          app.treeChildren.delete(dir);
+          return;
+        }
+        let next: DirEntryInfo[];
+        try {
+          next = await listDir(dir);
+        } catch {
+          next = []; // dossier supprimé ou devenu illisible
+        }
+        if (seq !== folderSeq) return;
+        const prev = app.treeChildren.get(dir);
+        if (!prev || !sameEntries(prev, next)) app.treeChildren.set(dir, next);
+      }),
+    );
+  }
+
+  function sameEntries(a: DirEntryInfo[], b: DirEntryInfo[]): boolean {
+    return (
+      a.length === b.length &&
+      a.every((x, i) => x.path === b[i].path && x.name === b[i].name && x.is_dir === b[i].is_dir)
+    );
+  }
+
+  function sameList(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((x, i) => x === b[i]);
   }
 
   /* Refresh débouncé (~300 ms) : le watcher Rust émet par rafales quand un
      outil externe touche plusieurs fichiers d'un coup. Le débounce couvre
-     aussi le retour de focus de la fenêtre. */
+     aussi le retour de focus de la fenêtre. La racine visée est celle de la
+     DERNIÈRE demande, pas forcément celle affichée : un refresh de fond qui
+     tombe pendant l'ouverture d'un dossier ne doit pas la supplanter. */
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   function scheduleFolderRefresh() {
     if (!app.folderPath) return;
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => {
-      const path = app.folderPath;
+      const path = targetRoot || app.folderPath;
       if (path) refreshFolder(path).catch(() => {});
     }, 300);
   }
 
   /** Bouton « rafraîchir » de la sidebar : immédiat, sans délai de debounce. */
   function refreshNow() {
-    const path = app.folderPath;
+    const path = targetRoot || app.folderPath;
     if (path) refreshFolder(path).catch(() => {});
   }
 
+  /** Retour dans la fenêtre : relecture de secours, seulement si le watcher
+      n'est pas là pour signaler les changements faits entre-temps. */
   function onWindowFocus() {
-    scheduleFolderRefresh();
+    if (!watcherActive) scheduleFolderRefresh();
   }
 
   /** Révèle le document actif dans la barre latérale. Hors du dossier ouvert
@@ -454,7 +547,10 @@
       // L'onglet suit le nouveau chemin : après un « sous », les Ctrl+S
       // suivants écrivent à la copie, l'original reste intact.
       app.markSaved(path, path.split(/[\\/]/).pop() ?? doc.name);
-      if (app.folderPath) await refreshFolder(app.folderPath);
+      // Un nouveau fichier (Enregistrer sous) doit apparaître dans l'arbre :
+      // le watcher le signale de lui-même ; sans lui, relecture débouncée.
+      // Jamais attendue ici : l'enregistrement est fini, l'arbre suivra.
+      if (!watcherActive) scheduleFolderRefresh();
       error = "";
     } catch (e) {
       error = String(e);
@@ -638,7 +734,10 @@
         return;
       }
 
+      // Même garde que openPath : une ouverture plus récente l'emporte.
+      const seq = ++openSeq;
       const doc = await readDocument(link.path);
+      if (seq !== openSeq) return;
       app.open(doc);
       pushHistory(link.path);
       // Rendu immédiat plutôt qu'attendre le debounce : l'ancre a besoin du
